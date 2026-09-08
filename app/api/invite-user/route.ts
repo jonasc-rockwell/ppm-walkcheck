@@ -1,47 +1,85 @@
 import { createClient } from '@supabase/supabase-js';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
 
-// Initialize admin client with Service Role Key to manage users
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// Helper to generate a random temporary password
+function generateTempPassword(length = 12) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
+  let password = '';
+  const randomBytes = crypto.randomBytes(length);
+  for (let i = 0; i < length; i++) {
+    password += chars[randomBytes[i] % chars.length];
+  }
+  return password;
+}
 
-export async function POST(req: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const { email, fullName, role, company, assignedEquipmentIds } = await req.json();
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 
-    // 1. Send automated invitation email to set password
-    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email);
-
-    if (authError) {
-      return NextResponse.json({ error: authError.message }, { status: 400 });
+    if (!serviceRoleKey || !supabaseUrl) {
+      return NextResponse.json({ error: 'Server configuration missing' }, { status: 500 });
     }
 
-    // 2. Insert user profile with updated roles ('root', 'rlc', 'contractor')
-    const { error: profileError } = await supabaseAdmin.from('profiles').insert({
-      id: authData.user.id,
-      full_name: fullName,
-      role: role, // 'root', 'rlc', or 'contractor'
-      company: company,
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
+    const { email, role, fullName, company, assignedEquipment } = await request.json();
+
+    const tempPassword = generateTempPassword();
+
+    // 1. Create the user with the generated temporary password
+    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password: tempPassword,
+      email_confirm: true, // Pre-confirm email so they can log in directly with the temp password
+      user_metadata: { must_change_password: true },
     });
 
-    if (profileError) {
-      return NextResponse.json({ error: profileError.message }, { status: 400 });
-    }
+    if (authError) throw authError;
 
-    // 3. Assign equipment if user is a contractor
-    if (role === 'contractor' && assignedEquipmentIds?.length > 0) {
-      const assignments = assignedEquipmentIds.map((eqId: number) => ({
-        user_id: authData.user.id,
+    const userId = authData.user.id;
+
+    // 2. Create profile entry with must_change_password flag
+    const { error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .insert({
+        id: userId,
+        full_name: fullName,
+        role,
+        company,
+        must_change_password: true,
+      });
+
+    if (profileError) throw profileError;
+
+    // 3. Assign equipment if contractor
+    if (role === 'contractor' && Array.isArray(assignedEquipment) && assignedEquipment.length > 0) {
+      const assignments = assignedEquipment.map((eqId: number) => ({
+        user_id: userId,
         equipment_id: eqId,
       }));
-      
       await supabaseAdmin.from('contractor_assignments').insert(assignments);
     }
 
-    return NextResponse.json({ success: true, message: 'Invite sent successfully!' });
+    // 4. Send custom password email via Supabase Auth reset trigger OR return credentials to Admin
+    // Trigger password reset / magic invitation link email
+    const { error: resetEmailError } = await supabaseAdmin.auth.admin.generateLink({
+      type: 'recovery',
+      email: email,
+      options: {
+        redirectTo: 'https://ppm-walkcheck.vercel.app/reset-password',
+      },
+    });
+
+    if (resetEmailError) console.warn('Recovery link generation warning:', resetEmailError.message);
+
+    return NextResponse.json({
+      success: true,
+      userId,
+      tempPassword, // Return so Root Admin can view/copy it if needed
+      message: `User created. Temporary password: ${tempPassword}`,
+    });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: err.message }, { status: 400 });
   }
 }
