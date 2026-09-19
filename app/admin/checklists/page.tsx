@@ -76,34 +76,39 @@ export default function ChecklistBuilderPage() {
     setFields(fields.filter((f) => f.id !== id));
   };
 
-  const saveTemplate = async () => {
-    setSaving(true);
-    setMessage(null);
+// app/admin/checklists/page.tsx
 
-    const { data: existing } = await supabase
+const saveTemplate = async () => {
+  setSaving(true);
+  setMessage(null);
+
+  try {
+    const catId = Number(selectedCategoryId);
+    const catName = categories.find((c) => c.id === catId)?.name || 'Domain';
+
+    const payload = {
+      equipment_category_id: catId,
+      title: `Inspection Checklist for ${catName}`,
+      schema: fields,
+    };
+
+    // Use native Supabase upsert targeted on unique equipment_category_id
+    const { data, error } = await supabase
       .from('checklist_templates')
-      .select('id')
-      .eq('equipment_category_id', selectedCategoryId)
-      .single();
+      .upsert(payload, { onConflict: 'equipment_category_id' })
+      .select();
 
-    if (existing) {
-      await supabase
-        .from('checklist_templates')
-        .update({ schema: fields })
-        .eq('id', existing.id);
-    } else {
-      await supabase.from('checklist_templates').insert([
-        {
-          equipment_category_id: selectedCategoryId,
-          title: `Inspection Checklist for ${categories.find((c) => c.id === selectedCategoryId)?.name}`,
-          schema: fields,
-        },
-      ]);
-    }
+    if (error) throw error;
 
+    console.log('Saved template response:', data);
+    setMessage({ type: 'success', text: `Checklist template for ${catName} saved successfully!` });
+  } catch (err: any) {
+    console.error('Save checklist error:', err);
+    setMessage({ type: 'error', text: `Failed to save template: ${err.message || 'Unknown database error'}` });
+  } finally {
     setSaving(false);
-    setMessage('Checklist template saved successfully!');
-  };
+  }
+};
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto text-white">
