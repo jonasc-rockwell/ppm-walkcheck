@@ -1,4 +1,20 @@
 // Converts stored JSON responses into flattened CSV columns
+// app/admin/reports/page.tsx
+'use client';
+
+import { useState, useEffect } from 'react';
+// ... standard imports
+
+export default function ReportsPage() {
+  // Component implementation...
+  
+  return (
+    <div>
+      {/* JSX markup */}
+    </div>
+  );
+}
+
 const exportDynamicCSV = (responses: any[]) => {
   if (responses.length === 0) return;
 
