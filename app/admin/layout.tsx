@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Wrench, Users, Layers, FileText, Shield } from 'lucide-react';
+import { Wrench, Users, Layers, FileText, Shield, Sparkles } from 'lucide-react';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -16,32 +16,45 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   ];
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      {/* Top Navigation Bar */}
-      <header className="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-50 print:hidden">
+    <div className="min-h-screen bg-slate-950/20 text-slate-900 font-sans antialiased selection:bg-blue-500 selection:text-white">
+      {/* Sleek Enterprise Top Nav Bar */}
+      <header className="bg-slate-900/95 backdrop-blur-md border-b border-slate-800/80 sticky top-0 z-50 shadow-lg shadow-slate-950/20 print:hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
+          
+          {/* Logo & Platform Name */}
           <div className="flex items-center gap-3">
-            <Shield className="w-6 h-6 text-blue-400" />
-            <span className="font-bold text-sm tracking-wide">PPM Management Admin</span>
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-md shadow-blue-500/20 ring-1 ring-white/20">
+              <Shield className="w-5 h-5 text-white stroke-[2.5]" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-black text-sm tracking-tight text-white">PPM OPS</span>
+                <span className="px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-400 text-[10px] font-bold border border-blue-500/20 flex items-center gap-1">
+                  <Sparkles className="w-2.5 h-2.5" /> PRO
+                </span>
+              </div>
+              <p className="text-[10px] font-medium text-slate-400">Enterprise Asset & Audit Portal</p>
+            </div>
           </div>
 
-          <nav className="flex space-x-1 sm:space-x-4">
+          {/* Navigation Links */}
+          <nav className="flex space-x-1 sm:space-x-2">
             {navItems.map((item) => {
               const Icon = item.icon;
-              const isActive = pathname === item.href || pathname?.startsWith(item.href);
+              const isActive = pathname === item.href || (pathname?.startsWith(item.href) && item.href !== '/admin');
 
               return (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition-colors ${
+                  className={`relative flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all duration-200 ${
                     isActive
-                      ? 'bg-blue-600 text-white font-bold'
-                      : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                      : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/60'
                   }`}
                 >
-                  <Icon className="w-4 h-4" />
-                  <span className="hidden md:inline">{item.name}</span>
+                  <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                  <span className="hidden md:inline tracking-tight">{item.name}</span>
                 </Link>
               );
             })}
@@ -50,7 +63,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       </header>
 
       {/* Main View Area */}
-      <main>{children}</main>
+      <main className="bg-slate-50/60 min-h-[calc(100vh-4rem)]">{children}</main>
     </div>
   );
 }

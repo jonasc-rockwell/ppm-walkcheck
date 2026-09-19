@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
-import { Wrench, Plus, Edit2, Trash2, Search, AlertCircle } from 'lucide-react';
+import { Wrench, Plus, Edit2, Trash2, Search, AlertCircle, Shield, SlidersHorizontal, CheckCircle2 } from 'lucide-react';
 
 interface Equipment {
   id: number;
@@ -64,17 +64,13 @@ export default function EquipmentPage() {
       return;
     }
 
-    // Fetch user role
     const { data: profile } = await supabase
       .from('profiles')
       .select('role')
       .eq('id', session.user.id)
       .single();
 
-    const role = profile?.role || 'contractor';
-    setUserRole(role);
-
-    // Fetch equipment data
+    setUserRole(profile?.role || 'contractor');
     fetchEquipment();
   };
 
@@ -136,106 +132,120 @@ export default function EquipmentPage() {
     fetchEquipment();
   };
 
-  // Role permissions check
   const canModifyEquipment = ['root', 'admin', 'rlc'].includes(userRole || '');
 
   if (loading) {
-    return <div className="p-8 text-center text-xs text-slate-500">Loading equipment management...</div>;
+    return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center gap-3">
+        <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin" />
+        <p className="text-xs font-semibold text-slate-500">Loading equipment registry...</p>
+      </div>
+    );
   }
 
   return (
     <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
-            <Wrench className="w-6 h-6" />
+      {/* Header Banner */}
+      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 p-6 sm:p-8 rounded-3xl shadow-xl shadow-slate-900/10 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-6 border border-slate-800/80 relative overflow-hidden">
+        <div className="absolute right-0 top-0 translate-x-12 -translate-y-12 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
+        
+        <div className="relative z-10 space-y-1">
+          <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-blue-500/20 text-blue-300 text-[11px] font-bold border border-blue-400/20 mb-2">
+            <Wrench className="w-3.5 h-3.5" /> Facility Inventory
           </div>
-          <div>
-            <h1 className="text-xl font-bold text-slate-900">Equipment Inventory</h1>
-            <p className="text-xs text-slate-500">Manage facility machinery and inspection items</p>
-          </div>
+          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">Equipment Registry</h1>
+          <p className="text-xs text-slate-300 font-normal max-w-xl">
+            Configure machinery assets, register serial tags, and set inspection categories across facilities.
+          </p>
         </div>
 
         {canModifyEquipment && (
           <button
             onClick={() => handleOpenModal()}
-            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+            className="relative z-10 flex items-center justify-center gap-2 px-5 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs rounded-2xl shadow-lg shadow-blue-600/30 transition-all active:scale-[0.98]"
           >
-            <Plus className="w-4 h-4" /> Add New Equipment
+            <Plus className="w-4 h-4 stroke-[2.5]" /> Add New Asset
           </button>
         )}
       </div>
 
-      {/* Role Notice Banner */}
+      {/* Access Restriction Notice */}
       {!canModifyEquipment && (
-        <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-center gap-3 text-amber-800 text-xs font-medium">
+        <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-center gap-3 text-amber-800 text-xs font-medium backdrop-blur-sm">
           <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />
-          <span>
-            You have read-only permissions for equipment list. Contractor logging is available under <code className="font-mono bg-amber-100 px-1 rounded">/main</code>.
-          </span>
+          <span>Read-only mode active. Contractor submission logs are located in the field walkcheck view.</span>
         </div>
       )}
 
-      {/* Search & Stats Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div className="relative w-full sm:w-80">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+      {/* Filter and Stats Bar */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm">
+        <div className="relative w-full sm:w-96">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
           <input
             type="text"
-            placeholder="Search code, name, category, location..."
+            placeholder="Search equipment tag, name, or location..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
           />
         </div>
-        <div className="text-xs font-semibold text-slate-500">
-          Total Equipment: <span className="text-slate-900 font-bold">{filteredList.length}</span>
+
+        <div className="flex items-center gap-4 text-xs font-medium text-slate-500 w-full sm:w-auto justify-between sm:justify-end">
+          <span className="flex items-center gap-1.5 bg-slate-100 px-3 py-1.5 rounded-xl text-slate-700 font-bold">
+            <SlidersHorizontal className="w-3.5 h-3.5 text-slate-400" />
+            {filteredList.length} Total Items
+          </span>
         </div>
       </div>
 
-      {/* Equipment Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      {/* Equipment Grid Table */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                <th className="p-4">Code</th>
-                <th className="p-4">Equipment Name</th>
-                <th className="p-4">Category</th>
-                <th className="p-4">Location</th>
+              <tr className="bg-slate-50/80 border-b border-slate-200/80 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                <th className="p-4">Equipment Tag</th>
+                <th className="p-4">Asset Name</th>
+                <th className="p-4">Domain Category</th>
+                <th className="p-4">Location / Zone</th>
                 {canModifyEquipment && <th className="p-4 text-right">Actions</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs">
               {filteredList.length === 0 ? (
                 <tr>
-                  <td colSpan={canModifyEquipment ? 5 : 4} className="p-8 text-center text-slate-400">
-                    No equipment records found.
+                  <td colSpan={canModifyEquipment ? 5 : 4} className="p-12 text-center text-slate-400 font-medium">
+                    No equipment matches the search criteria.
                   </td>
                 </tr>
               ) : (
                 filteredList.map((eq) => (
-                  <tr key={eq.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="p-4 font-mono font-bold text-blue-600">{eq.equipment_code}</td>
+                  <tr key={eq.id} className="hover:bg-slate-50/80 transition-colors group">
+                    <td className="p-4">
+                      <span className="font-mono font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-100">
+                        {eq.equipment_code}
+                      </span>
+                    </td>
                     <td className="p-4 font-bold text-slate-800">{eq.name}</td>
                     <td className="p-4">
-                      <span className="px-2 py-1 bg-slate-100 text-slate-700 font-semibold rounded-lg text-[10px] border border-slate-200">
+                      <span className="px-2.5 py-1 bg-slate-100 text-slate-700 font-bold rounded-lg text-[10px] border border-slate-200/60 uppercase tracking-wide">
                         {eq.category_name}
                       </span>
                     </td>
-                    <td className="p-4 text-slate-600">{eq.location}</td>
+                    <td className="p-4 text-slate-600 font-medium">{eq.location}</td>
                     {canModifyEquipment && (
-                      <td className="p-4 text-right space-x-2">
+                      <td className="p-4 text-right space-x-1">
                         <button
                           onClick={() => handleOpenModal(eq)}
-                          className="p-1.5 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
+                          title="Edit Equipment"
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => handleDeleteEquipment(eq.id)}
-                          className="p-1.5 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                          className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
+                          title="Delete Equipment"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -249,45 +259,48 @@ export default function EquipmentPage() {
         </div>
       </div>
 
-      {/* Add / Edit Equipment Modal */}
+      {/* Edit / Add Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-md w-full p-6 space-y-4">
-            <h2 className="text-base font-bold text-slate-900">
-              {editingId ? 'Edit Equipment' : 'Add New Equipment'}
-            </h2>
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-6">
+            <div className="space-y-1">
+              <h2 className="text-lg font-bold text-slate-900">
+                {editingId ? 'Update Equipment Item' : 'Register New Equipment'}
+              </h2>
+              <p className="text-xs text-slate-500">Provide machine identification tags and functional placement.</p>
+            </div>
 
-            <form onSubmit={handleSaveEquipment} className="space-y-3">
+            <form onSubmit={handleSaveEquipment} className="space-y-4">
               <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">Equipment Code</label>
+                <label className="text-xs font-bold text-slate-700 block mb-1">Equipment Code Tag</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. HVAC-CH-01"
                   value={equipmentCode}
                   onChange={(e) => setEquipmentCode(e.target.value)}
-                  className="w-full p-2.5 border border-slate-300 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-mono font-bold"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">Equipment Name</label>
+                <label className="text-xs font-bold text-slate-700 block mb-1">Equipment Description</label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Centrifugal Chiller Unit"
+                  placeholder="e.g. Centrifugal Chiller Unit A"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full p-2.5 border border-slate-300 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">Category Domain</label>
+                <label className="text-xs font-bold text-slate-700 block mb-1">Domain Category</label>
                 <select
                   value={categoryName}
                   onChange={(e) => setCategoryName(e.target.value)}
-                  className="w-full p-2.5 border border-slate-300 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-bold"
                 >
                   <option value="HVAC">HVAC</option>
                   <option value="Electrical">Electrical</option>
@@ -298,31 +311,31 @@ export default function EquipmentPage() {
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">Location</label>
+                <label className="text-xs font-bold text-slate-700 block mb-1">Location / Zone</label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Basement Plant Room B2"
+                  placeholder="e.g. Basement Level 2, Plant Room B"
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
-                  className="w-full p-2.5 border border-slate-300 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-4 border-t">
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors"
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors"
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-600/20"
                 >
-                  {submitting ? 'Saving...' : 'Save Equipment'}
+                  {submitting ? 'Saving...' : 'Save Asset'}
                 </button>
               </div>
             </form>
