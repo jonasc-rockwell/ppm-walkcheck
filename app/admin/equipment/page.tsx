@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
-import { Wrench, Plus, Edit2, Trash2, Search, AlertCircle, SlidersHorizontal, MapPin } from 'lucide-react';
+import { Wrench, Plus, Edit2, Trash2, Search, AlertCircle, SlidersHorizontal, MapPin, RefreshCw } from 'lucide-react';
 import { useRole } from '../RoleContext';
 
 interface Equipment {
@@ -12,7 +12,7 @@ interface Equipment {
   name: string;
   category_name: string;
   location: string;
-  status: string;
+  status?: string;
 }
 
 export default function EquipmentPage() {
@@ -30,6 +30,10 @@ export default function EquipmentPage() {
   const [categoryName, setCategoryName] = useState('HVAC');
   const [location, setLocation] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  
+  // Feedback Messages
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -59,12 +63,15 @@ export default function EquipmentPage() {
 
   const fetchEquipment = async () => {
     setLoading(true);
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('equipment')
       .select('*')
-      .order('equipment_code', { ascending: true });
+      .order('id', { ascending: false });
 
-    if (data) {
+    if (error) {
+      console.error('Fetch error:', error);
+      setErrorMessage(`Database Fetch Error: ${error.message}`);
+    } else if (data) {
       setEquipmentList(data);
       setFilteredList(data);
     }
@@ -72,6 +79,7 @@ export default function EquipmentPage() {
   };
 
   const handleOpenModal = (eq?: Equipment) => {
+    setErrorMessage(null);
     if (eq) {
       setEditingId(eq.id);
       setEquipmentCode(eq.equipment_code);
@@ -91,6 +99,7 @@ export default function EquipmentPage() {
   const handleSaveEquipment = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
+    setErrorMessage(null);
 
     const payload = {
       equipment_code: equipmentCode,
@@ -99,27 +108,43 @@ export default function EquipmentPage() {
       location,
     };
 
-    if (editingId) {
-      await supabase.from('equipment').update(payload).eq('id', editingId);
-    } else {
-      await supabase.from('equipment').insert([payload]);
-    }
+    try {
+      if (editingId) {
+        const { error } = await supabase.from('equipment').update(payload).eq('id', editingId);
+        if (error) throw error;
+        setSuccessMessage('Equipment updated successfully!');
+      } else {
+        const { error } = await supabase.from('equipment').insert([payload]);
+        if (error) throw error;
+        setSuccessMessage('New equipment item saved successfully!');
+      }
 
-    setSubmitting(false);
-    setIsModalOpen(false);
-    fetchEquipment();
+      setIsModalOpen(false);
+      fetchEquipment();
+    } catch (err: any) {
+      console.error('Save error details:', err);
+      setErrorMessage(`Failed to save asset: ${err.message || 'Unknown database error'}`);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleDeleteEquipment = async (id: number) => {
     if (!confirm('Are you sure you want to delete this equipment item?')) return;
-    await supabase.from('equipment').delete().eq('id', id);
-    fetchEquipment();
+    setErrorMessage(null);
+    
+    const { error } = await supabase.from('equipment').delete().eq('id', id);
+    if (error) {
+      setErrorMessage(`Delete failed: ${error.message}`);
+    } else {
+      setSuccessMessage('Equipment item deleted.');
+      fetchEquipment();
+    }
   };
 
-  // Determine permissions based on header active role switcher
   const canModifyEquipment = ['root', 'admin', 'rlc'].includes(activeRole || '');
 
-  if (loading) {
+  if (loading && equipmentList.length === 0) {
     return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center gap-3">
         <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
@@ -152,6 +177,24 @@ export default function EquipmentPage() {
         )}
       </div>
 
+      {/* Alert Banners */}
+      {errorMessage && (
+        <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-2xl flex items-center justify-between text-rose-300 text-xs font-bold backdrop-blur-md">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0" />
+            <span>{errorMessage}</span>
+          </div>
+          <button onClick={() => setErrorMessage(null)} className="text-rose-400 hover:text-rose-200">×</button>
+        </div>
+      )}
+
+      {successMessage && (
+        <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center justify-between text-emerald-300 text-xs font-bold backdrop-blur-md">
+          <span>{successMessage}</span>
+          <button onClick={() => setSuccessMessage(null)} className="text-emerald-400 hover:text-emerald-200">×</button>
+        </div>
+      )}
+
       {!canModifyEquipment && (
         <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-center gap-3 text-amber-300 text-xs font-medium backdrop-blur-md">
           <AlertCircle className="w-5 h-5 text-amber-400 flex-shrink-0" />
@@ -168,7 +211,7 @@ export default function EquipmentPage() {
             placeholder="Search code, name, domain, location..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-slate-800/80 border border-slate-700/80 rounded-xl text-xs text-white placeholder-slate-500 outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 font-medium transition-all"
+            className="w-full pl-10 pr-4 py-2 bg-slate-800/80 border border-slate-700/80 rounded-xl text-xs text-white placeholder-slate-500 outline-none focus:ring-2 focus:ring-blue-500/40 font-medium"
           />
         </div>
 
@@ -195,7 +238,7 @@ export default function EquipmentPage() {
               {filteredList.length === 0 ? (
                 <tr>
                   <td colSpan={canModifyEquipment ? 5 : 4} className="p-12 text-center text-slate-500 font-medium">
-                    No equipment found matching criteria.
+                    No equipment found.
                   </td>
                 </tr>
               ) : (
@@ -311,8 +354,9 @@ export default function EquipmentPage() {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-blue-600/30"
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-blue-600/30 flex items-center gap-2"
                 >
+                  {submitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : null}
                   {submitting ? 'Saving...' : 'Save Asset'}
                 </button>
               </div>
