@@ -6,32 +6,41 @@ import { createBrowserClient } from '@supabase/ssr';
 import { Wrench, Plus, Edit2, Trash2, Search, AlertCircle, SlidersHorizontal, MapPin, RefreshCw } from 'lucide-react';
 import { useRole } from '../RoleContext';
 
+interface Category {
+  id: number;
+  name: string;
+}
+
 interface Equipment {
   id: number;
-  equipment_code: string;
+  equipment_number: string;
   name: string;
-  category_name: string;
+  category_id?: number;
+  subcategory_id?: number;
   location: string;
-  status?: string;
+  qr_code?: string;
+  created_at: string;
+  categories?: { name: string } | null;
 }
 
 export default function EquipmentPage() {
   const { activeRole } = useRole();
   const [equipmentList, setEquipmentList] = useState<Equipment[]>([]);
   const [filteredList, setFilteredList] = useState<Equipment[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
 
-  // Modal State
+  // Modal Form State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [equipmentCode, setEquipmentCode] = useState('');
+  const [equipmentNumber, setEquipmentNumber] = useState('');
   const [name, setName] = useState('');
-  const [categoryName, setCategoryName] = useState('HVAC');
+  const [categoryId, setCategoryId] = useState<number | ''>('');
   const [location, setLocation] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  
-  // Feedback Messages
+
+  // Feedback Alerts
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -41,7 +50,7 @@ export default function EquipmentPage() {
   );
 
   useEffect(() => {
-    fetchEquipment();
+    fetchInitialData();
   }, []);
 
   useEffect(() => {
@@ -52,29 +61,40 @@ export default function EquipmentPage() {
       setFilteredList(
         equipmentList.filter(
           (eq) =>
-            eq.equipment_code.toLowerCase().includes(q) ||
-            eq.name.toLowerCase().includes(q) ||
-            eq.category_name.toLowerCase().includes(q) ||
-            eq.location.toLowerCase().includes(q)
+            eq.equipment_number?.toLowerCase().includes(q) ||
+            eq.name?.toLowerCase().includes(q) ||
+            eq.location?.toLowerCase().includes(q) ||
+            eq.categories?.name?.toLowerCase().includes(q)
         )
       );
     }
   }, [searchQuery, equipmentList]);
 
-  const fetchEquipment = async () => {
+  const fetchInitialData = async () => {
     setLoading(true);
-    const { data, error } = await supabase
+    setErrorMessage(null);
+
+    // Fetch categories for dropdown selection
+    const { data: catData, error: catError } = await supabase
+      .from('categories')
+      .select('id, name')
+      .order('name', { ascending: true });
+
+    if (catData) setCategories(catData);
+
+    // Fetch equipment inventory
+    const { data: eqData, error: eqError } = await supabase
       .from('equipment')
-      .select('*')
+      .select('*, categories(name)')
       .order('id', { ascending: false });
 
-    if (error) {
-      console.error('Fetch error:', error);
-      setErrorMessage(`Database Fetch Error: ${error.message}`);
-    } else if (data) {
-      setEquipmentList(data);
-      setFilteredList(data);
+    if (eqError) {
+      setErrorMessage(`Error fetching equipment: ${eqError.message}`);
+    } else if (eqData) {
+      setEquipmentList(eqData);
+      setFilteredList(eqData);
     }
+
     setLoading(false);
   };
 
@@ -82,15 +102,15 @@ export default function EquipmentPage() {
     setErrorMessage(null);
     if (eq) {
       setEditingId(eq.id);
-      setEquipmentCode(eq.equipment_code);
-      setName(eq.name);
-      setCategoryName(eq.category_name);
-      setLocation(eq.location);
+      setEquipmentNumber(eq.equipment_number || '');
+      setName(eq.name || '');
+      setCategoryId(eq.category_id || '');
+      setLocation(eq.location || '');
     } else {
       setEditingId(null);
-      setEquipmentCode('');
+      setEquipmentNumber('');
       setName('');
-      setCategoryName('HVAC');
+      setCategoryId(categories.length > 0 ? categories[0].id : '');
       setLocation('');
     }
     setIsModalOpen(true);
@@ -102,9 +122,9 @@ export default function EquipmentPage() {
     setErrorMessage(null);
 
     const payload = {
-      equipment_code: equipmentCode,
+      equipment_number: equipmentNumber,
       name,
-      category_name: categoryName,
+      category_id: categoryId ? Number(categoryId) : null,
       location,
     };
 
@@ -120,9 +140,8 @@ export default function EquipmentPage() {
       }
 
       setIsModalOpen(false);
-      fetchEquipment();
+      fetchInitialData();
     } catch (err: any) {
-      console.error('Save error details:', err);
       setErrorMessage(`Failed to save asset: ${err.message || 'Unknown database error'}`);
     } finally {
       setSubmitting(false);
@@ -132,13 +151,13 @@ export default function EquipmentPage() {
   const handleDeleteEquipment = async (id: number) => {
     if (!confirm('Are you sure you want to delete this equipment item?')) return;
     setErrorMessage(null);
-    
+
     const { error } = await supabase.from('equipment').delete().eq('id', id);
     if (error) {
       setErrorMessage(`Delete failed: ${error.message}`);
     } else {
       setSuccessMessage('Equipment item deleted.');
-      fetchEquipment();
+      fetchInitialData();
     }
   };
 
@@ -148,7 +167,7 @@ export default function EquipmentPage() {
     return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center gap-3">
         <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-        <p className="text-xs font-semibold text-slate-400">Loading equipment registry...</p>
+        <p className="text-xs font-semibold text-slate-400">Loading equipment inventory...</p>
       </div>
     );
   }
@@ -163,7 +182,7 @@ export default function EquipmentPage() {
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">Equipment Inventory</h1>
           <p className="text-xs text-slate-400 font-medium max-w-xl">
-            Configure machinery assets, register serial tags, and set operational categories across facilities.
+            Configure facility machinery assets, register equipment tags, and link operational domains.
           </p>
         </div>
 
@@ -198,7 +217,7 @@ export default function EquipmentPage() {
       {!canModifyEquipment && (
         <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-center gap-3 text-amber-300 text-xs font-medium backdrop-blur-md">
           <AlertCircle className="w-5 h-5 text-amber-400 flex-shrink-0" />
-          <span>Read-only permissions active for Contractor preview mode. Field walkchecks are located in <code className="font-mono bg-slate-800 px-1 py-0.5 rounded">/main</code>.</span>
+          <span>Read-only mode active. Field walkcheck logs are managed in <code className="font-mono bg-slate-800 px-1 py-0.5 rounded">/main</code>.</span>
         </div>
       )}
 
@@ -208,7 +227,7 @@ export default function EquipmentPage() {
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
           <input
             type="text"
-            placeholder="Search code, name, domain, location..."
+            placeholder="Search equipment number, name, domain, location..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-10 pr-4 py-2 bg-slate-800/80 border border-slate-700/80 rounded-xl text-xs text-white placeholder-slate-500 outline-none focus:ring-2 focus:ring-blue-500/40 font-medium"
@@ -221,16 +240,16 @@ export default function EquipmentPage() {
         </div>
       </div>
 
-      {/* Equipment Table */}
+      {/* Equipment Inventory Table */}
       <div className="bg-slate-900/60 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-800/60 border-b border-white/10 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                <th className="p-4">Equipment Tag</th>
+                <th className="p-4">Equipment Number</th>
                 <th className="p-4">Name</th>
-                <th className="p-4">Domain</th>
-                <th className="p-4">Location</th>
+                <th className="p-4">Domain Category</th>
+                <th className="p-4">Location Zone</th>
                 {canModifyEquipment && <th className="p-4 text-right">Actions</th>}
               </tr>
             </thead>
@@ -238,7 +257,7 @@ export default function EquipmentPage() {
               {filteredList.length === 0 ? (
                 <tr>
                   <td colSpan={canModifyEquipment ? 5 : 4} className="p-12 text-center text-slate-500 font-medium">
-                    No equipment found.
+                    No equipment found matching criteria.
                   </td>
                 </tr>
               ) : (
@@ -246,13 +265,13 @@ export default function EquipmentPage() {
                   <tr key={eq.id} className="hover:bg-white/[0.03] transition-colors">
                     <td className="p-4">
                       <span className="font-mono font-bold text-blue-400 bg-blue-500/10 px-2.5 py-1 rounded-lg border border-blue-500/20">
-                        {eq.equipment_code}
+                        {eq.equipment_number || `EQ-${eq.id}`}
                       </span>
                     </td>
                     <td className="p-4 font-bold text-white">{eq.name}</td>
                     <td className="p-4">
                       <span className="px-2.5 py-1 bg-slate-800 text-slate-300 font-bold rounded-lg text-[10px] border border-white/10 uppercase tracking-wide">
-                        {eq.category_name}
+                        {eq.categories?.name || 'General'}
                       </span>
                     </td>
                     <td className="p-4 text-slate-400 font-medium flex items-center gap-1.5">
@@ -282,24 +301,24 @@ export default function EquipmentPage() {
         </div>
       </div>
 
-      {/* Edit/Add Modal */}
+      {/* Edit / Add Asset Modal */}
       {isModalOpen && canModifyEquipment && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-white/10 rounded-3xl shadow-2xl max-w-md w-full p-6 space-y-5 text-white">
             <div>
               <h2 className="text-lg font-bold">{editingId ? 'Edit Equipment' : 'Add New Equipment'}</h2>
-              <p className="text-xs text-slate-400">Specify unique asset code, category domain, and location.</p>
+              <p className="text-xs text-slate-400">Provide equipment tag number, asset description, and location zone.</p>
             </div>
 
             <form onSubmit={handleSaveEquipment} className="space-y-4">
               <div>
-                <label className="text-xs font-bold text-slate-300 block mb-1">Equipment Code Tag</label>
+                <label className="text-xs font-bold text-slate-300 block mb-1">Equipment Number / Tag</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. HVAC-CH-01"
-                  value={equipmentCode}
-                  onChange={(e) => setEquipmentCode(e.target.value)}
+                  value={equipmentNumber}
+                  onChange={(e) => setEquipmentNumber(e.target.value)}
                   className="w-full p-3 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white outline-none focus:ring-2 focus:ring-blue-500/50 font-mono font-bold"
                 />
               </div>
@@ -319,15 +338,16 @@ export default function EquipmentPage() {
               <div>
                 <label className="text-xs font-bold text-slate-300 block mb-1">Domain Category</label>
                 <select
-                  value={categoryName}
-                  onChange={(e) => setCategoryName(e.target.value)}
+                  value={categoryId}
+                  onChange={(e) => setCategoryId(e.target.value ? Number(e.target.value) : '')}
                   className="w-full p-3 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white outline-none focus:ring-2 focus:ring-blue-500/50 font-bold"
                 >
-                  <option value="HVAC">HVAC</option>
-                  <option value="Electrical">Electrical</option>
-                  <option value="Plumbing">Plumbing</option>
-                  <option value="Fire Safety">Fire Safety</option>
-                  <option value="Mechanical">Mechanical</option>
+                  <option value="">Select Domain Category...</option>
+                  {categories.map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -356,7 +376,7 @@ export default function EquipmentPage() {
                   disabled={submitting}
                   className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-blue-600/30 flex items-center gap-2"
                 >
-                  {submitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : null}
+                  {submitting && <RefreshCw className="w-4 h-4 animate-spin" />}
                   {submitting ? 'Saving...' : 'Save Asset'}
                 </button>
               </div>
