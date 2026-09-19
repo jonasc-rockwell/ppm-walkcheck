@@ -10,10 +10,7 @@ import {
   Printer,
   CheckCircle2,
   AlertTriangle,
-  Clock,
   Filter,
-  Calendar,
-  Layers,
 } from 'lucide-react';
 
 interface InspectionLog {
@@ -23,14 +20,13 @@ interface InspectionLog {
   inspector_name: string;
   status: 'Pass' | 'Flagged';
   remarks: string;
-  photo_url?: string;
   created_at: string;
 }
 
 export default function ReportsPage() {
   const [logs, setLogs] = useState<InspectionLog[]>([]);
   const [filteredLogs, setFilteredLogs] = useState<InspectionLog[]>([]);
-  
+
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
@@ -70,7 +66,6 @@ export default function ReportsPage() {
   const applyFilters = () => {
     let result = [...logs];
 
-    // Text search filter
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       result = result.filter(
@@ -81,17 +76,14 @@ export default function ReportsPage() {
       );
     }
 
-    // Status filter
     if (selectedStatus !== 'ALL') {
       result = result.filter((log) => log.status === selectedStatus);
     }
 
-    // Category filter
     if (selectedCategory !== 'ALL') {
       result = result.filter((log) => log.category_name === selectedCategory);
     }
 
-    // Date range filter
     if (startDate) {
       result = result.filter((log) => new Date(log.created_at) >= new Date(startDate));
     }
@@ -104,13 +96,11 @@ export default function ReportsPage() {
     setFilteredLogs(result);
   };
 
-  // KPI Calculations
   const totalLogs = filteredLogs.length;
   const passedLogs = filteredLogs.filter((l) => l.status === 'Pass').length;
   const flaggedLogs = filteredLogs.filter((l) => l.status === 'Flagged').length;
   const passRate = totalLogs > 0 ? ((passedLogs / totalLogs) * 100).toFixed(1) : '0.0';
 
-  // Export to CSV
   const exportToCSV = () => {
     if (filteredLogs.length === 0) return;
 
@@ -132,108 +122,110 @@ export default function ReportsPage() {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `PPM_Inspection_Report_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', `Inspection_Report_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
   if (loading) {
-    return <div className="p-8 text-center text-xs text-slate-500">Loading inspection audit logs...</div>;
+    return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center gap-3">
+        <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+        <p className="text-xs font-semibold text-slate-400">Loading audit log summaries...</p>
+      </div>
+    );
   }
 
   return (
-    <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
-      {/* Header & Quick Export Controls */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm print:hidden">
-        <div className="flex items-center gap-3">
-          <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
-            <FileText className="w-6 h-6" />
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="bg-slate-900/60 backdrop-blur-xl border border-white/10 rounded-3xl p-6 sm:p-8 shadow-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-6 print:hidden">
+        <div className="space-y-1">
+          <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-blue-500/20 text-blue-300 text-[11px] font-bold border border-blue-400/20 mb-1">
+            <FileText className="w-3.5 h-3.5" /> Analytics & Reports
           </div>
-          <div>
-            <h1 className="text-xl font-bold text-slate-900">Reports & Audit Logs</h1>
-            <p className="text-xs text-slate-500">Review walkchecks, flagged issues, and generate executive reports</p>
-          </div>
+          <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">Reports & Audit Logs</h1>
+          <p className="text-xs text-slate-400 max-w-xl">
+            Review walkcheck logs, inspect flagged operational issues, and export CSV audit reports.
+          </p>
         </div>
 
         <div className="flex items-center gap-2">
           <button
             onClick={() => window.print()}
-            className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all"
+            className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition-all border border-white/5"
           >
             <Printer className="w-4 h-4" /> Print Summary
           </button>
           <button
             onClick={exportToCSV}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+            className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-blue-600/30"
           >
             <Download className="w-4 h-4" /> Export CSV
           </button>
         </div>
       </div>
 
-      {/* KPI Overview Grid */}
+      {/* KPI Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-1">
+        <div className="bg-slate-900/60 backdrop-blur-xl p-5 rounded-2xl border border-white/10 shadow-2xl space-y-1">
           <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Inspections</div>
-          <div className="text-2xl font-black text-slate-900">{totalLogs}</div>
+          <div className="text-2xl font-black text-white">{totalLogs}</div>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-1">
-          <div className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider flex items-center gap-1.5">
-            <CheckCircle2 className="w-3.5 h-3.5" /> Passed
+        <div className="bg-slate-900/60 backdrop-blur-xl p-5 rounded-2xl border border-white/10 shadow-2xl space-y-1">
+          <div className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1">
+            <CheckCircle2 className="w-3.5 h-3.5" /> Passed Checks
           </div>
-          <div className="text-2xl font-black text-emerald-700">{passedLogs}</div>
+          <div className="text-2xl font-black text-emerald-400">{passedLogs}</div>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-1">
-          <div className="text-[11px] font-bold text-rose-600 uppercase tracking-wider flex items-center gap-1.5">
+        <div className="bg-slate-900/60 backdrop-blur-xl p-5 rounded-2xl border border-white/10 shadow-2xl space-y-1">
+          <div className="text-[11px] font-bold text-rose-400 uppercase tracking-wider flex items-center gap-1">
             <AlertTriangle className="w-3.5 h-3.5" /> Flagged Issues
           </div>
-          <div className="text-2xl font-black text-rose-700">{flaggedLogs}</div>
+          <div className="text-2xl font-black text-rose-400">{flaggedLogs}</div>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-1">
-          <div className="text-[11px] font-bold text-blue-600 uppercase tracking-wider">Compliance Rate</div>
-          <div className="text-2xl font-black text-blue-900">{passRate}%</div>
+        <div className="bg-slate-900/60 backdrop-blur-xl p-5 rounded-2xl border border-white/10 shadow-2xl space-y-1">
+          <div className="text-[11px] font-bold text-blue-400 uppercase tracking-wider">Compliance Rate</div>
+          <div className="text-2xl font-black text-blue-300">{passRate}%</div>
         </div>
       </div>
 
       {/* Filter Toolbar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3 print:hidden">
-        <div className="flex items-center gap-2 text-xs font-bold text-slate-700 border-b pb-2">
-          <Filter className="w-4 h-4 text-blue-600" /> Filter Logs
+      <div className="bg-slate-900/60 backdrop-blur-xl p-4 rounded-2xl border border-white/10 shadow-2xl space-y-3 print:hidden">
+        <div className="flex items-center gap-2 text-xs font-bold text-slate-300 border-b border-white/10 pb-2">
+          <Filter className="w-4 h-4 text-blue-400" /> Filter Logs
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-          {/* Search Box */}
           <div className="relative">
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
             <input
               type="text"
-              placeholder="Code, inspector, remarks..."
+              placeholder="Search code, inspector..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full pl-8 pr-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 outline-none focus:ring-2 focus:ring-blue-500/50"
             />
           </div>
 
-          {/* Status Filter */}
           <select
             value={selectedStatus}
             onChange={(e) => setSelectedStatus(e.target.value)}
-            className="p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500"
+            className="p-2 bg-slate-800 border border-slate-700 rounded-xl text-xs font-semibold text-white outline-none focus:ring-2 focus:ring-blue-500/50"
           >
             <option value="ALL">All Statuses</option>
             <option value="Pass">Pass Only</option>
             <option value="Flagged">Flagged Only</option>
           </select>
 
-          {/* Category Filter */}
           <select
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value)}
-            className="p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500"
+            className="p-2 bg-slate-800 border border-slate-700 rounded-xl text-xs font-semibold text-white outline-none focus:ring-2 focus:ring-blue-500/50"
           >
             <option value="ALL">All Domains</option>
             <option value="HVAC">HVAC</option>
@@ -243,64 +235,62 @@ export default function ReportsPage() {
             <option value="Mechanical">Mechanical</option>
           </select>
 
-          {/* Start Date */}
           <input
             type="date"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
-            className="p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500"
+            className="p-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white outline-none focus:ring-2 focus:ring-blue-500/50"
           />
 
-          {/* End Date */}
           <input
             type="date"
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
-            className="p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500"
+            className="p-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white outline-none focus:ring-2 focus:ring-blue-500/50"
           />
         </div>
       </div>
 
       {/* Logs Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-slate-900/60 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              <tr className="bg-slate-800/60 border-b border-white/10 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                 <th className="p-4">Date & Time</th>
-                <th className="p-4">Equipment</th>
+                <th className="p-4">Equipment Tag</th>
                 <th className="p-4">Domain</th>
                 <th className="p-4">Inspector</th>
                 <th className="p-4">Status</th>
-                <th className="p-4">Remarks</th>
+                <th className="p-4">Field Remarks</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-xs">
+            <tbody className="divide-y divide-white/5 text-xs text-slate-300">
               {filteredLogs.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-slate-400">
-                    No inspection logs match the selected filter parameters.
+                  <td colSpan={6} className="p-8 text-center text-slate-500">
+                    No inspection logs match search parameters.
                   </td>
                 </tr>
               ) : (
                 filteredLogs.map((log) => (
-                  <tr key={log.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="p-4 text-slate-500 font-mono text-[11px]">
+                  <tr key={log.id} className="hover:bg-white/[0.03] transition-colors">
+                    <td className="p-4 text-slate-400 font-mono text-[11px]">
                       {new Date(log.created_at).toLocaleString()}
                     </td>
-                    <td className="p-4 font-mono font-bold text-slate-900">{log.equipment_code}</td>
+                    <td className="p-4 font-mono font-bold text-blue-400">{log.equipment_code}</td>
                     <td className="p-4">
-                      <span className="px-2 py-1 bg-slate-100 text-slate-700 font-semibold rounded-lg text-[10px] border border-slate-200">
+                      <span className="px-2 py-0.5 bg-slate-800 text-slate-300 font-bold rounded-lg text-[10px] border border-white/10">
                         {log.category_name}
                       </span>
                     </td>
-                    <td className="p-4 font-bold text-slate-800">{log.inspector_name}</td>
+                    <td className="p-4 font-bold text-white">{log.inspector_name}</td>
                     <td className="p-4">
                       <span
                         className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase border ${
                           log.status === 'Pass'
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            : 'bg-rose-50 text-rose-700 border-rose-200'
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                            : 'bg-rose-500/20 text-rose-300 border-rose-500/30'
                         }`}
                       >
                         {log.status === 'Pass' ? (
@@ -311,7 +301,7 @@ export default function ReportsPage() {
                         {log.status}
                       </span>
                     </td>
-                    <td className="p-4 text-slate-600 max-w-xs truncate">{log.remarks || '—'}</td>
+                    <td className="p-4 text-slate-400 max-w-xs truncate">{log.remarks || '—'}</td>
                   </tr>
                 ))
               )}
