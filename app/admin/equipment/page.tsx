@@ -63,7 +63,7 @@ export default function EquipmentListPage() {
   const loadData = async () => {
     setLoading(true);
 
-    // 1. Fetch categories
+    // 1. Fetch Categories
     const { data: catData } = await supabase
       .from('equipment_categories')
       .select('id, name')
@@ -79,7 +79,7 @@ export default function EquipmentListPage() {
 
     const categoryMap = new Map(categoriesList.map((c) => [c.id, c.name]));
 
-    // 2. Fetch raw equipment list without complex joins to prevent query failures
+    // 2. Fetch Equipment List
     const { data: eqData, error: eqErr } = await supabase
       .from('equipment')
       .select('*')
@@ -87,7 +87,7 @@ export default function EquipmentListPage() {
 
     if (eqErr) console.error('Equipment fetch error:', eqErr);
 
-    // 3. Fetch checklist templates schema
+    // 3. Fetch Checklist Templates Schema
     const { data: tmplData } = await supabase
       .from('checklist_templates')
       .select('equipment_category_id, schema');
@@ -104,7 +104,7 @@ export default function EquipmentListPage() {
     if (eqData) {
       const formatted = eqData.map((item: any) => ({
         ...item,
-        category_name: categoryMap.get(item.equipment_category_id) || 'General',
+        category_name: categoryMap.get(Number(item.equipment_category_id)) || 'General',
       }));
       setEquipmentList(formatted);
     } else {
@@ -151,7 +151,7 @@ export default function EquipmentListPage() {
       loadData();
     } catch (err: any) {
       setFormError(err.message || 'Failed to add equipment.');
-    } font-medium {
+    } finally {
       setCreating(false);
     }
   };
