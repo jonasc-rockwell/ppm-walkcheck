@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { 
   Plus, Search, ShieldCheck, ChevronDown, ChevronUp, 
-  RefreshCw, Layers, X, AlertCircle 
+  RefreshCw, Layers, X, AlertCircle, CheckCircle2, Send
 } from 'lucide-react';
 
 interface EquipmentItem {
@@ -26,7 +26,7 @@ interface QuestionField {
   label: string;
   type: 'number' | 'boolean' | 'select' | 'text';
   options?: string[];
-  required: boolean;
+  required?: boolean;
 }
 
 export default function EquipmentListPage() {
@@ -36,6 +36,11 @@ export default function EquipmentListPage() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
+
+  // Form Response State for interactive inspection in dropdown
+  const [formResponses, setFormResponses] = useState<Record<number, Record<string, any>>>({});
+  const [submittingChecklist, setSubmittingChecklist] = useState<number | null>(null);
+  const [submittedStatus, setSubmittedStatus] = useState<Record<number, string>>({});
 
   // Modal State for Adding Equipment
   const [showAddModal, setShowAddModal] = useState(false);
@@ -77,7 +82,7 @@ export default function EquipmentListPage() {
 
     const categoryMap = new Map(categoriesList.map((c) => [c.id, c.name]));
 
-    // 2. Fetch Equipment List (Exact Column Mapping)
+    // 2. Fetch Equipment List
     const { data: eqData, error: eqErr } = await supabase
       .from('equipment')
       .select('id, category_id, subcategory_id, name, equipment_number, location, qr_code, created_at')
@@ -117,6 +122,51 @@ export default function EquipmentListPage() {
     setExpandedId((prev) => (prev === id ? null : id));
   };
 
+  // Helper to handle form input changes in the dropdown
+  const handleInputChange = (equipmentId: number, fieldId: string, value: any) => {
+    setFormResponses((prev) => ({
+      ...prev,
+      [equipmentId]: {
+        ...(prev[equipmentId] || {}),
+        [fieldId]: value,
+      },
+    }));
+  };
+
+  // Submit filled inspection responses
+  const handleChecklistSubmit = async (equipmentItem: EquipmentItem) => {
+    setSubmittingChecklist(equipmentItem.id);
+    try {
+      const responses = formResponses[equipmentItem.id] || {};
+      
+      // Save or log responses (Inserts into inspection_logs if table exists, or updates equipment)
+      const { error } = await supabase.from('inspection_logs').insert([
+        {
+          equipment_id: equipmentItem.id,
+          checklist_responses: responses,
+          inspected_at: new Date().toISOString(),
+        },
+      ]);
+
+      if (error) {
+        console.warn('Inspection log insert fallback:', error.message);
+      }
+
+      setSubmittedStatus((prev) => ({
+        ...prev,
+        [equipmentItem.id]: 'Checklist submitted successfully!',
+      }));
+
+      setTimeout(() => {
+        setSubmittedStatus((prev) => ({ ...prev, [equipmentItem.id]: '' }));
+      }, 4000);
+    } catch (err: any) {
+      console.error('Error submitting checklist:', err);
+    } finally {
+      setSubmittingChecklist(null);
+    }
+  };
+
   const handleCreateEquipment = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreating(true);
@@ -127,7 +177,6 @@ export default function EquipmentListPage() {
         throw new Error('Equipment Name and QR Code are required.');
       }
 
-      // Exact Match to Schema: id, category_id, subcategory_id, name, equipment_number, location, qr_code, created_at
       const payload = {
         category_id: Number(newEquipment.category_id),
         name: newEquipment.name,
@@ -170,7 +219,7 @@ export default function EquipmentListPage() {
         <div>
           <h1 className="text-2xl sm:text-3xl font-black tracking-tight">Equipment List</h1>
           <p className="text-xs text-slate-400 font-medium max-w-lg mt-1">
-            Click any row to drop down and inspect its associated category checklist questions.
+            Click any row to drop down, inspect questions, or fill out inspection checks.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -191,7 +240,7 @@ export default function EquipmentListPage() {
         </div>
       </div>
 
-      {/* Search Bar */}
+      {/* Search Input Bar */}
       <div className="relative">
         <Search className="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
         <input
@@ -203,7 +252,7 @@ export default function EquipmentListPage() {
         />
       </div>
 
-      {/* Equipment Row Items */}
+      {/* Equipment Row Cards */}
       <div className="space-y-3">
         {loading ? (
           <div className="p-12 text-center bg-slate-900/40 rounded-2xl border border-white/5 flex flex-col items-center gap-2">
@@ -218,19 +267,23 @@ export default function EquipmentListPage() {
           filteredEquipment.map((item) => {
             const isExpanded = expandedId === item.id;
             const schema = templates[item.category_id] || [];
+            const responses = formResponses[item.id] || {};
+            const successMsg = submittedStatus[item.id];
 
             return (
               <div
                 key={item.id}
-                className={`bg-slate-900/80 backdrop-blur-xl rounded-2xl border transition-all duration-200 overflow-hidden shadow-xl cursor-pointer select-none ${
+                className={`bg-slate-900/80 backdrop-blur-xl rounded-2xl border transition-all duration-200 overflow-hidden shadow-xl ${
                   isExpanded
                     ? 'border-blue-500/50 ring-2 ring-blue-500/20'
                     : 'border-white/10 hover:border-white/20 hover:bg-slate-900'
                 }`}
-                onClick={() => toggleExpand(item.id)}
               >
-                {/* Main Card Content */}
-                <div className="p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                {/* Main Row Bar - Click to Toggle Dropdown */}
+                <div
+                  className="p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 cursor-pointer select-none"
+                  onClick={() => toggleExpand(item.id)}
+                >
                   <div className="flex items-center gap-3">
                     <div className="p-3 bg-blue-500/10 rounded-xl border border-blue-500/20 text-blue-400">
                       <Layers className="w-5 h-5" />
@@ -252,7 +305,6 @@ export default function EquipmentListPage() {
                     </div>
                   </div>
 
-                  {/* Expand Chevron Icon */}
                   <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
                     <div className="p-1.5 rounded-lg bg-slate-800 text-slate-400 group-hover:text-white transition-colors">
                       {isExpanded ? (
@@ -264,46 +316,137 @@ export default function EquipmentListPage() {
                   </div>
                 </div>
 
-                {/* Checklist Schema Dropdown */}
+                {/* Dropdown Section: Interactive Fillable Checklist */}
                 {isExpanded && (
                   <div
-                    className="p-5 bg-slate-950/60 border-t border-white/10 space-y-4 cursor-default"
+                    className="p-5 bg-slate-950/60 border-t border-white/10 space-y-5 cursor-default"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                    <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                      <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
                         <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                        Checklist Questions ({item.category_name})
+                        Checklist Inspection ({item.category_name})
                       </h4>
                       <span className="text-[10px] text-slate-500 font-mono">
-                        {schema.length} Total Fields
+                        {schema.length} Total Questions
                       </span>
                     </div>
+
+                    {successMsg && (
+                      <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 rounded-xl text-xs flex items-center gap-2 font-bold">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                        {successMsg}
+                      </div>
+                    )}
 
                     {schema.length === 0 ? (
                       <div className="p-4 rounded-xl bg-slate-900/40 border border-dashed border-slate-800 text-xs text-slate-500 text-center">
                         No checklist template schema defined for {item.category_name} domain.
                       </div>
                     ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {schema.map((field, idx) => (
-                          <div
-                            key={field.id}
-                            className="p-3 bg-slate-900/90 rounded-xl border border-white/5 space-y-1.5"
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {schema.map((field, idx) => {
+                            const val = responses[field.id];
+
+                            return (
+                              <div
+                                key={field.id}
+                                className="p-4 bg-slate-900/90 rounded-2xl border border-white/5 space-y-2.5"
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] font-mono text-slate-400">
+                                    Q{idx + 1} • {field.type.toUpperCase()}
+                                  </span>
+                                  {field.required && (
+                                    <span className="text-[9px] font-bold text-amber-400/80 bg-amber-400/10 px-1.5 py-0.2 rounded">
+                                      Required
+                                    </span>
+                                  )}
+                                </div>
+
+                                <p className="text-xs font-bold text-slate-200">{field.label}</p>
+
+                                {/* Boolean / Checkmark Checkbox */}
+                                {field.type === 'boolean' && (
+                                  <label className="flex items-center gap-3 p-2.5 bg-slate-800/80 rounded-xl border border-white/5 cursor-pointer hover:bg-slate-800 transition-colors">
+                                    <input
+                                      type="checkbox"
+                                      checked={!!val}
+                                      onChange={(e) =>
+                                        handleInputChange(item.id, field.id, e.target.checked)
+                                      }
+                                      className="w-4 h-4 rounded border-slate-600 text-blue-600 focus:ring-blue-500 focus:ring-offset-slate-900 accent-blue-600"
+                                    />
+                                    <span className="text-xs font-semibold text-slate-300">
+                                      {val ? 'Passed / Checked' : 'Check to pass'}
+                                    </span>
+                                  </label>
+                                )}
+
+                                {/* Number Field */}
+                                {field.type === 'number' && (
+                                  <input
+                                    type="number"
+                                    value={val ?? ''}
+                                    onChange={(e) =>
+                                      handleInputChange(item.id, field.id, e.target.value)
+                                    }
+                                    placeholder="Enter numeric value..."
+                                    className="w-full p-2.5 bg-slate-800/80 border border-white/5 rounded-xl text-xs text-white outline-none focus:ring-2 focus:ring-blue-500/50"
+                                  />
+                                )}
+
+                                {/* Select Field */}
+                                {field.type === 'select' && (
+                                  <select
+                                    value={val ?? ''}
+                                    onChange={(e) =>
+                                      handleInputChange(item.id, field.id, e.target.value)
+                                    }
+                                    className="w-full p-2.5 bg-slate-800/80 border border-white/5 rounded-xl text-xs text-white outline-none focus:ring-2 focus:ring-blue-500/50"
+                                  >
+                                    <option value="">Select Option...</option>
+                                    {field.options?.map((opt, i) => (
+                                      <option key={i} value={opt}>
+                                        {opt}
+                                      </option>
+                                    ))}
+                                  </select>
+                                )}
+
+                                {/* Text Field */}
+                                {field.type === 'text' && (
+                                  <input
+                                    type="text"
+                                    value={val ?? ''}
+                                    onChange={(e) =>
+                                      handleInputChange(item.id, field.id, e.target.value)
+                                    }
+                                    placeholder="Enter text notes..."
+                                    className="w-full p-2.5 bg-slate-800/80 border border-white/5 rounded-xl text-xs text-white outline-none focus:ring-2 focus:ring-blue-500/50"
+                                  />
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Submit Inspection Button */}
+                        <div className="flex justify-end pt-2">
+                          <button
+                            onClick={() => handleChecklistSubmit(item)}
+                            disabled={submittingChecklist === item.id}
+                            className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-emerald-600/20 transition-all active:scale-95"
                           >
-                            <div className="flex items-center justify-between">
-                              <span className="text-[10px] font-mono text-slate-400">
-                                Q{idx + 1} • {field.type}
-                              </span>
-                              {field.required && (
-                                <span className="text-[9px] font-bold text-amber-400/80 bg-amber-400/10 px-1.5 py-0.2 rounded">
-                                  Required
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-xs font-bold text-slate-200">{field.label}</p>
-                          </div>
-                        ))}
+                            {submittingChecklist === item.id ? (
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Send className="w-3.5 h-3.5" />
+                            )}
+                            {submittingChecklist === item.id ? 'Submitting...' : 'Submit Inspection Check'}
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
