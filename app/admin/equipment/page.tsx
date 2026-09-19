@@ -3,7 +3,8 @@
 
 import { useState, useEffect } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
-import { Wrench, Plus, Edit2, Trash2, Search, AlertCircle, SlidersHorizontal, Layers, MapPin } from 'lucide-react';
+import { Wrench, Plus, Edit2, Trash2, Search, AlertCircle, SlidersHorizontal, MapPin } from 'lucide-react';
+import { useRole } from '../RoleContext';
 
 interface Equipment {
   id: number;
@@ -15,10 +16,10 @@ interface Equipment {
 }
 
 export default function EquipmentPage() {
+  const { activeRole } = useRole();
   const [equipmentList, setEquipmentList] = useState<Equipment[]>([]);
   const [filteredList, setFilteredList] = useState<Equipment[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [userRole, setUserRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Modal State
@@ -36,7 +37,7 @@ export default function EquipmentPage() {
   );
 
   useEffect(() => {
-    checkRoleAndFetchData();
+    fetchEquipment();
   }, []);
 
   useEffect(() => {
@@ -56,25 +57,8 @@ export default function EquipmentPage() {
     }
   }, [searchQuery, equipmentList]);
 
-  const checkRoleAndFetchData = async () => {
-    setLoading(true);
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      setLoading(false);
-      return;
-    }
-
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', session.user.id)
-      .single();
-
-    setUserRole(profile?.role || 'contractor');
-    fetchEquipment();
-  };
-
   const fetchEquipment = async () => {
+    setLoading(true);
     const { data } = await supabase
       .from('equipment')
       .select('*')
@@ -132,8 +116,8 @@ export default function EquipmentPage() {
     fetchEquipment();
   };
 
-  // Strictly enforce that contractors cannot modify equipment
-const canModifyEquipment = userRole !== 'contractor' && ['root', 'admin', 'rlc'].includes(userRole || '');
+  // Determine permissions based on header active role switcher
+  const canModifyEquipment = ['root', 'admin', 'rlc'].includes(activeRole || '');
 
   if (loading) {
     return (
@@ -146,11 +130,9 @@ const canModifyEquipment = userRole !== 'contractor' && ['root', 'admin', 'rlc']
 
   return (
     <div className="space-y-6">
-      {/* Dark Glass Header Banner */}
+      {/* Header Banner */}
       <div className="bg-slate-900/60 backdrop-blur-xl border border-white/10 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-        <div className="absolute top-0 right-0 w-80 h-80 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
-        
-        <div className="relative z-10 space-y-1">
+        <div className="space-y-1">
           <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-blue-500/20 text-blue-300 text-[11px] font-bold border border-blue-400/20 mb-1">
             <Wrench className="w-3.5 h-3.5" /> Asset Management
           </div>
@@ -163,7 +145,7 @@ const canModifyEquipment = userRole !== 'contractor' && ['root', 'admin', 'rlc']
         {canModifyEquipment && (
           <button
             onClick={() => handleOpenModal()}
-            className="relative z-10 flex items-center justify-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-2xl shadow-lg shadow-blue-600/30 transition-all active:scale-95"
+            className="flex items-center justify-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-2xl shadow-lg shadow-blue-600/30 transition-all active:scale-95"
           >
             <Plus className="w-4 h-4 stroke-[2.5]" /> Add New Equipment
           </button>
@@ -173,11 +155,11 @@ const canModifyEquipment = userRole !== 'contractor' && ['root', 'admin', 'rlc']
       {!canModifyEquipment && (
         <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-center gap-3 text-amber-300 text-xs font-medium backdrop-blur-md">
           <AlertCircle className="w-5 h-5 text-amber-400 flex-shrink-0" />
-          <span>Read-only permissions. Contractor submissions are executed in the mobile field view.</span>
+          <span>Read-only permissions active for Contractor preview mode. Field walkchecks are located in <code className="font-mono bg-slate-800 px-1 py-0.5 rounded">/main</code>.</span>
         </div>
       )}
 
-      {/* Filter Toolbar & Count */}
+      {/* Filter Bar */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-900/50 backdrop-blur-md p-4 rounded-2xl border border-white/10">
         <div className="relative w-full sm:w-96">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
@@ -196,7 +178,7 @@ const canModifyEquipment = userRole !== 'contractor' && ['root', 'admin', 'rlc']
         </div>
       </div>
 
-      {/* Glassmorphic Table Container */}
+      {/* Equipment Table */}
       <div className="bg-slate-900/60 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
@@ -257,8 +239,8 @@ const canModifyEquipment = userRole !== 'contractor' && ['root', 'admin', 'rlc']
         </div>
       </div>
 
-      {/* Glassmorphic Edit/Add Modal */}
-      {isModalOpen && (
+      {/* Edit/Add Modal */}
+      {isModalOpen && canModifyEquipment && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-white/10 rounded-3xl shadow-2xl max-w-md w-full p-6 space-y-5 text-white">
             <div>
