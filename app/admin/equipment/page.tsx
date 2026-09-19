@@ -5,20 +5,20 @@ import { useState, useEffect } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { 
   Plus, Search, ShieldCheck, ChevronDown, ChevronUp, 
-  RefreshCw, Layers, X, AlertCircle
+  RefreshCw, Layers, X, AlertCircle 
 } from 'lucide-react';
 
 interface EquipmentItem {
   id: number;
-  qr_code: string;
+  category_id: number;
+  subcategory_id?: number;
   name: string;
-  model: string;
-  serial_number: string;
-  location: string;
-  equipment_category_id: number;
+  equipment_number?: string;
+  location?: string;
+  qr_code: string;
+  created_at?: string;
   category_name?: string;
   status?: string;
-  checklist_data?: Record<string, any>;
 }
 
 interface QuestionField {
@@ -44,11 +44,9 @@ export default function EquipmentListPage() {
   const [newEquipment, setNewEquipment] = useState({
     qr_code: '',
     name: '',
-    model: '',
-    serial_number: '',
+    equipment_number: '',
     location: '',
-    equipment_category_id: 1,
-    status: 'Operational',
+    category_id: 1,
   });
 
   const supabase = createBrowserClient(
@@ -69,7 +67,7 @@ export default function EquipmentListPage() {
       .select('id, name')
       .order('id', { ascending: true });
 
-    const categoriesList = catData || [
+    const categoriesList = catData && catData.length > 0 ? catData : [
       { id: 1, name: 'HVAC' },
       { id: 2, name: 'Plumbing' },
       { id: 3, name: 'Electrical' },
@@ -79,10 +77,10 @@ export default function EquipmentListPage() {
 
     const categoryMap = new Map(categoriesList.map((c) => [c.id, c.name]));
 
-    // 2. Fetch Equipment List
+    // 2. Fetch Equipment List (Exact Column Mapping)
     const { data: eqData, error: eqErr } = await supabase
       .from('equipment')
-      .select('*')
+      .select('id, category_id, subcategory_id, name, equipment_number, location, qr_code, created_at')
       .order('id', { ascending: true });
 
     if (eqErr) console.error('Equipment fetch error:', eqErr);
@@ -104,7 +102,7 @@ export default function EquipmentListPage() {
     if (eqData) {
       const formatted = eqData.map((item: any) => ({
         ...item,
-        category_name: categoryMap.get(Number(item.equipment_category_id)) || 'General',
+        category_name: categoryMap.get(Number(item.category_id)) || 'General',
       }));
       setEquipmentList(formatted);
     } else {
@@ -129,9 +127,13 @@ export default function EquipmentListPage() {
         throw new Error('Equipment Name and QR Code are required.');
       }
 
+      // Exact Match to Schema: id, category_id, subcategory_id, name, equipment_number, location, qr_code, created_at
       const payload = {
-        ...newEquipment,
-        equipment_category_id: Number(newEquipment.equipment_category_id),
+        category_id: Number(newEquipment.category_id),
+        name: newEquipment.name,
+        equipment_number: newEquipment.equipment_number || null,
+        location: newEquipment.location || null,
+        qr_code: newEquipment.qr_code,
       };
 
       const { error } = await supabase.from('equipment').insert([payload]);
@@ -142,11 +144,9 @@ export default function EquipmentListPage() {
       setNewEquipment({
         qr_code: '',
         name: '',
-        model: '',
-        serial_number: '',
+        equipment_number: '',
         location: '',
-        equipment_category_id: categories[0]?.id || 1,
-        status: 'Operational',
+        category_id: categories[0]?.id || 1,
       });
       loadData();
     } catch (err: any) {
@@ -159,7 +159,8 @@ export default function EquipmentListPage() {
   const filteredEquipment = equipmentList.filter((item) =>
     item.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     item.qr_code?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    item.location?.toLowerCase().includes(searchQuery.toLowerCase())
+    item.location?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    item.equipment_number?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -190,19 +191,19 @@ export default function EquipmentListPage() {
         </div>
       </div>
 
-      {/* Search Input Bar */}
+      {/* Search Bar */}
       <div className="relative">
         <Search className="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
         <input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search equipment by name, QR code, or location..."
+          placeholder="Search equipment by name, QR code, equipment number, or location..."
           className="w-full pl-11 pr-4 py-3 bg-slate-900/60 backdrop-blur-xl border border-white/10 rounded-2xl text-xs text-white placeholder-slate-500 outline-none focus:ring-2 focus:ring-blue-500/50"
         />
       </div>
 
-      {/* Equipment List Container */}
+      {/* Equipment Row Items */}
       <div className="space-y-3">
         {loading ? (
           <div className="p-12 text-center bg-slate-900/40 rounded-2xl border border-white/5 flex flex-col items-center gap-2">
@@ -216,7 +217,7 @@ export default function EquipmentListPage() {
         ) : (
           filteredEquipment.map((item) => {
             const isExpanded = expandedId === item.id;
-            const schema = templates[item.equipment_category_id] || [];
+            const schema = templates[item.category_id] || [];
 
             return (
               <div
@@ -228,7 +229,7 @@ export default function EquipmentListPage() {
                 }`}
                 onClick={() => toggleExpand(item.id)}
               >
-                {/* Entire Main Row - Clickable Target */}
+                {/* Main Card Content */}
                 <div className="p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
                     <div className="p-3 bg-blue-500/10 rounded-xl border border-blue-500/20 text-blue-400">
@@ -245,23 +246,14 @@ export default function EquipmentListPage() {
                       </div>
                       <h3 className="text-sm font-black text-white mt-0.5">{item.name}</h3>
                       <p className="text-[11px] text-slate-400 font-medium">
-                        Location: <span className="text-slate-300">{item.location || 'Unspecified'}</span> • Model:{' '}
-                        <span className="text-slate-300">{item.model || 'N/A'}</span>
+                        Location: <span className="text-slate-300">{item.location || 'Unspecified'}</span> • No:{' '}
+                        <span className="text-slate-300">{item.equipment_number || 'N/A'}</span>
                       </p>
                     </div>
                   </div>
 
-                  {/* Right Status Badge & Arrow */}
-                  <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end border-t sm:border-t-0 pt-3 sm:pt-0 border-white/5">
-                    <span
-                      className={`text-[10px] font-bold px-2.5 py-1 rounded-full border uppercase tracking-wider ${
-                        item.status === 'Operational'
-                          ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-                          : 'bg-amber-500/10 border-amber-500/20 text-amber-400'
-                      }`}
-                    >
-                      {item.status || 'Operational'}
-                    </span>
+                  {/* Expand Chevron Icon */}
+                  <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
                     <div className="p-1.5 rounded-lg bg-slate-800 text-slate-400 group-hover:text-white transition-colors">
                       {isExpanded ? (
                         <ChevronUp className="w-4 h-4 text-blue-400" />
@@ -272,7 +264,7 @@ export default function EquipmentListPage() {
                   </div>
                 </div>
 
-                {/* Dropdown Section containing Checklist Fields */}
+                {/* Checklist Schema Dropdown */}
                 {isExpanded && (
                   <div
                     className="p-5 bg-slate-950/60 border-t border-white/10 space-y-4 cursor-default"
@@ -369,10 +361,10 @@ export default function EquipmentListPage() {
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-slate-300 block mb-1">Domain Category</label>
+                  <label className="text-xs font-bold text-slate-300 block mb-1">Category Domain</label>
                   <select
-                    value={newEquipment.equipment_category_id}
-                    onChange={(e) => setNewEquipment({ ...newEquipment, equipment_category_id: Number(e.target.value) })}
+                    value={newEquipment.category_id}
+                    onChange={(e) => setNewEquipment({ ...newEquipment, category_id: Number(e.target.value) })}
                     className="w-full p-3 bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold text-white outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     {categories.map((c) => (
@@ -386,12 +378,12 @@ export default function EquipmentListPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-bold text-slate-300 block mb-1">Model</label>
+                  <label className="text-xs font-bold text-slate-300 block mb-1">Equipment Number</label>
                   <input
                     type="text"
-                    value={newEquipment.model}
-                    onChange={(e) => setNewEquipment({ ...newEquipment, model: e.target.value })}
-                    placeholder="e.g. Carrier 30XA"
+                    value={newEquipment.equipment_number}
+                    onChange={(e) => setNewEquipment({ ...newEquipment, equipment_number: e.target.value })}
+                    placeholder="e.g. EQ-NUM-99"
                     className="w-full p-3 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
