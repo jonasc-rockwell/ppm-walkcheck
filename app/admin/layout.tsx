@@ -63,6 +63,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
 
   const navItems = [
     { name: 'Equipment', href: '/admin/equipment', icon: Wrench, roles: ['root', 'admin', 'rlc'] },
+    { name: 'Checklist Builder', href: '/admin/checklists', icon: FileText, roles: ['root', 'admin', 'rlc'] },
     { name: 'Category Assignments', href: '/admin/categories', icon: Layers, roles: ['root', 'admin', 'rlc'] },
     { name: 'User Management', href: '/admin/users', icon: Users, roles: ['root', 'admin'] },
     { name: 'Reports & Logs', href: '/admin/reports', icon: FileText, roles: ['root', 'admin', 'rlc'] },
