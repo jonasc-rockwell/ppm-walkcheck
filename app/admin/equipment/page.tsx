@@ -132,7 +132,8 @@ export default function EquipmentPage() {
     fetchEquipment();
   };
 
-  const canModifyEquipment = ['root', 'admin', 'rlc'].includes(userRole || '');
+  // Strictly enforce that contractors cannot modify equipment
+const canModifyEquipment = userRole !== 'contractor' && ['root', 'admin', 'rlc'].includes(userRole || '');
 
   if (loading) {
     return (
