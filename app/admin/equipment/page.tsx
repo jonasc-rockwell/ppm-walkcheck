@@ -132,36 +132,37 @@ export default function EquipmentPage() {
   };
 
   const handleSaveEquipment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSubmitting(true);
-    setErrorMessage(null);
+  e.preventDefault();
+  setSubmitting(true);
+  setErrorMessage(null);
 
-    const payload = {
-      equipment_number: equipmentNumber,
-      name,
-      category_id: Number(categoryId),
-      location,
-    };
-
-    try {
-      if (editingId) {
-        const { error } = await supabase.from('equipment').update(payload).eq('id', editingId);
-        if (error) throw error;
-        setSuccessMessage('Equipment item updated successfully!');
-      } else {
-        const { error } = await supabase.from('equipment').insert([payload]);
-        if (error) throw error;
-        setSuccessMessage('New equipment item saved successfully!');
-      }
-
-      setIsModalOpen(false);
-      fetchInitialData();
-    } catch (err: any) {
-      setErrorMessage(`Failed to save asset: ${err.message || 'Unknown database error'}`);
-    } finally {
-      setSubmitting(false);
-    }
+  const payload = {
+    equipment_number: equipmentNumber,
+    name,
+    category_id: Number(categoryId),
+    location,
+    qr_code: `QR-${equipmentNumber}`, // Automatically populates required qr_code field
   };
+
+  try {
+    if (editingId) {
+      const { error } = await supabase.from('equipment').update(payload).eq('id', editingId);
+      if (error) throw error;
+      setSuccessMessage('Equipment item updated successfully!');
+    } else {
+      const { error } = await supabase.from('equipment').insert([payload]);
+      if (error) throw error;
+      setSuccessMessage('New equipment item saved successfully!');
+    }
+
+    setIsModalOpen(false);
+    fetchInitialData();
+  } catch (err: any) {
+    setErrorMessage(`Failed to save asset: ${err.message || 'Unknown database error'}`);
+  } finally {
+    setSubmitting(false);
+  }
+};
 
   const handleDeleteEquipment = async (id: number) => {
     if (!confirm('Are you sure you want to delete this equipment item?')) return;
