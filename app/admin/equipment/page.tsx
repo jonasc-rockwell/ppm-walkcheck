@@ -16,11 +16,9 @@ interface Equipment {
   equipment_number: string;
   name: string;
   category_id?: number;
-  subcategory_id?: number;
   location: string;
   qr_code?: string;
   created_at: string;
-  categories?: { name: string } | null;
 }
 
 export default function EquipmentPage() {
@@ -36,7 +34,7 @@ export default function EquipmentPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [equipmentNumber, setEquipmentNumber] = useState('');
   const [name, setName] = useState('');
-  const [categoryId, setCategoryId] = useState<number | ''>('');
+  const [categoryId, setCategoryId] = useState<number>(1);
   const [location, setLocation] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -64,28 +62,40 @@ export default function EquipmentPage() {
             eq.equipment_number?.toLowerCase().includes(q) ||
             eq.name?.toLowerCase().includes(q) ||
             eq.location?.toLowerCase().includes(q) ||
-            eq.categories?.name?.toLowerCase().includes(q)
+            getCategoryName(eq.category_id).toLowerCase().includes(q)
         )
       );
     }
-  }, [searchQuery, equipmentList]);
+  }, [searchQuery, equipmentList, categories]);
 
   const fetchInitialData = async () => {
     setLoading(true);
     setErrorMessage(null);
 
-    // Fetch categories for dropdown selection
+    // 1. Fetch domain categories from equipment_categories
     const { data: catData, error: catError } = await supabase
-      .from('categories')
+      .from('equipment_categories')
       .select('id, name')
-      .order('name', { ascending: true });
+      .order('id', { ascending: true });
 
-    if (catData) setCategories(catData);
+    if (catData && catData.length > 0) {
+      setCategories(catData);
+      setCategoryId(catData[0].id);
+    } else if (catError) {
+      console.warn('Fallback to default categories due to fetch notice:', catError.message);
+      // Fallback matching your exact schema IDs
+      setCategories([
+        { id: 1, name: 'HVAC' },
+        { id: 2, name: 'Plumbing' },
+        { id: 3, name: 'Electrical' },
+        { id: 4, name: 'FDAS' },
+      ]);
+    }
 
-    // Fetch equipment inventory
+    // 2. Fetch equipment items
     const { data: eqData, error: eqError } = await supabase
       .from('equipment')
-      .select('*, categories(name)')
+      .select('*')
       .order('id', { ascending: false });
 
     if (eqError) {
@@ -98,19 +108,24 @@ export default function EquipmentPage() {
     setLoading(false);
   };
 
+  const getCategoryName = (catId?: number) => {
+    const found = categories.find((c) => c.id === Number(catId));
+    return found ? found.name : 'HVAC';
+  };
+
   const handleOpenModal = (eq?: Equipment) => {
     setErrorMessage(null);
     if (eq) {
       setEditingId(eq.id);
       setEquipmentNumber(eq.equipment_number || '');
       setName(eq.name || '');
-      setCategoryId(eq.category_id || '');
+      setCategoryId(Number(eq.category_id) || (categories[0]?.id ?? 1));
       setLocation(eq.location || '');
     } else {
       setEditingId(null);
       setEquipmentNumber('');
       setName('');
-      setCategoryId(categories.length > 0 ? categories[0].id : '');
+      setCategoryId(categories[0]?.id ?? 1);
       setLocation('');
     }
     setIsModalOpen(true);
@@ -124,7 +139,7 @@ export default function EquipmentPage() {
     const payload = {
       equipment_number: equipmentNumber,
       name,
-      category_id: categoryId ? Number(categoryId) : null,
+      category_id: Number(categoryId),
       location,
     };
 
@@ -132,7 +147,7 @@ export default function EquipmentPage() {
       if (editingId) {
         const { error } = await supabase.from('equipment').update(payload).eq('id', editingId);
         if (error) throw error;
-        setSuccessMessage('Equipment updated successfully!');
+        setSuccessMessage('Equipment item updated successfully!');
       } else {
         const { error } = await supabase.from('equipment').insert([payload]);
         if (error) throw error;
@@ -271,7 +286,7 @@ export default function EquipmentPage() {
                     <td className="p-4 font-bold text-white">{eq.name}</td>
                     <td className="p-4">
                       <span className="px-2.5 py-1 bg-slate-800 text-slate-300 font-bold rounded-lg text-[10px] border border-white/10 uppercase tracking-wide">
-                        {eq.categories?.name || 'General'}
+                        {getCategoryName(eq.category_id)}
                       </span>
                     </td>
                     <td className="p-4 text-slate-400 font-medium flex items-center gap-1.5">
@@ -339,10 +354,9 @@ export default function EquipmentPage() {
                 <label className="text-xs font-bold text-slate-300 block mb-1">Domain Category</label>
                 <select
                   value={categoryId}
-                  onChange={(e) => setCategoryId(e.target.value ? Number(e.target.value) : '')}
+                  onChange={(e) => setCategoryId(Number(e.target.value))}
                   className="w-full p-3 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white outline-none focus:ring-2 focus:ring-blue-500/50 font-bold"
                 >
-                  <option value="">Select Domain Category...</option>
                   {categories.map((cat) => (
                     <option key={cat.id} value={cat.id}>
                       {cat.name}
