@@ -18,9 +18,10 @@ interface QuestionField {
 
 interface TemplateItem {
   id: number;
-  title?: string;
+  title: string;
   equipment_prefix: string;
   schema: QuestionField[];
+  equipment_category_id?: number | null;
 }
 
 export default function ChecklistBuilderPage() {
@@ -29,6 +30,7 @@ export default function ChecklistBuilderPage() {
   
   // Editor Form State
   const [equipmentPrefix, setEquipmentPrefix] = useState('');
+  const [title, setTitle] = useState('');
   const [questions, setQuestions] = useState<QuestionField[]>([]);
   
   const [loading, setLoading] = useState(true);
@@ -56,12 +58,14 @@ export default function ChecklistBuilderPage() {
     } else if (data) {
       const formatted: TemplateItem[] = data.map((t) => ({
         id: t.id,
+        title: t.title || `${t.equipment_prefix || 'General'} Checklist`,
         equipment_prefix: t.equipment_prefix || 'GENERAL',
         schema: Array.isArray(t.schema) ? t.schema : [],
+        equipment_category_id: t.equipment_category_id || null,
       }));
       setTemplates(formatted);
 
-      if (formatted.length > 0 && !selectedTemplateId) {
+      if (formatted.length > 0 && selectedTemplateId === null) {
         selectTemplate(formatted[0]);
       }
     }
@@ -71,18 +75,21 @@ export default function ChecklistBuilderPage() {
   const selectTemplate = (tmpl: TemplateItem) => {
     setSelectedTemplateId(tmpl.id);
     setEquipmentPrefix(tmpl.equipment_prefix || '');
+    setTitle(tmpl.title || '');
     setQuestions(tmpl.schema || []);
     setMessage(null);
   };
 
   const handleCreateNewTemplate = () => {
     setSelectedTemplateId(null);
-    setEquipmentPrefix('NEW');
+    setEquipmentPrefix('');
+    setTitle('');
     setQuestions([
       {
-        id: `q_${Date.now()}`,
-        label: 'Is the equipment visually undamaged?',
+        id: `field_${Date.now()}`,
+        label: 'Is the equipment in normal operating condition?',
         type: 'boolean',
+        options: [],
         required: true,
       },
     ]);
@@ -91,9 +98,10 @@ export default function ChecklistBuilderPage() {
 
   const handleAddQuestion = () => {
     const newQ: QuestionField = {
-      id: `q_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      id: `field_${Date.now()}`,
       label: '',
       type: 'boolean',
+      options: [],
       required: true,
     };
     setQuestions((prev) => [...prev, newQ]);
@@ -112,17 +120,20 @@ export default function ChecklistBuilderPage() {
   };
 
   const handleSaveTemplate = async () => {
-    if (!equipmentPrefix.trim()) {
-      setMessage({ type: 'error', text: 'Equipment prefix is required (e.g. AHU, PUMP, SOLAR).' });
+    const cleanPrefix = equipmentPrefix.trim().toUpperCase();
+
+    if (!cleanPrefix) {
+      setMessage({ type: 'error', text: 'Target equipment prefix code is required (e.g. AHU, PUMP, SOLAR).' });
       return;
     }
 
     setSaving(true);
     setMessage(null);
 
-    const cleanPrefix = equipmentPrefix.trim().toUpperCase();
+    const templateTitle = title.trim() || `Inspection Checklist for ${cleanPrefix}`;
 
     const payload = {
+      title: templateTitle,
       equipment_prefix: cleanPrefix,
       schema: questions,
     };
@@ -137,7 +148,7 @@ export default function ChecklistBuilderPage() {
 
         if (error) throw error;
       } else {
-        // Create New Template
+        // Create New Prefix Rule Template
         const { data, error } = await supabase
           .from('checklist_templates')
           .insert([payload])
@@ -148,7 +159,7 @@ export default function ChecklistBuilderPage() {
         if (data) setSelectedTemplateId(data.id);
       }
 
-      setMessage({ type: 'success', text: `Checklist template for prefix "${cleanPrefix}" saved successfully!` });
+      setMessage({ type: 'success', text: `Checklist template rule for prefix "${cleanPrefix}" saved!` });
       await loadTemplates();
     } catch (err: any) {
       setMessage({ type: 'error', text: err.message || 'Failed to save template.' });
@@ -164,7 +175,7 @@ export default function ChecklistBuilderPage() {
         <div>
           <h1 className="text-2xl sm:text-3xl font-black tracking-tight">Checklist Builder</h1>
           <p className="text-xs text-slate-400 font-medium max-w-xl mt-1">
-            Map checklist questions directly to equipment code prefixes (e.g., <span className="text-blue-400 font-bold">AHU</span>, <span className="text-blue-400 font-bold">PUMP</span>, <span className="text-blue-400 font-bold">SOLAR</span>).
+            Set prefix rules (e.g., <span className="text-blue-400 font-bold">AHU</span>, <span className="text-blue-400 font-bold">SOLAR</span>). Any equipment code starting with this prefix will automatically use these questions.
           </p>
         </div>
         <button
@@ -199,7 +210,7 @@ export default function ChecklistBuilderPage() {
         <div className="bg-slate-900/80 backdrop-blur-xl p-5 rounded-3xl border border-white/10 space-y-4">
           <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
             <Layers className="w-4 h-4 text-blue-400" />
-            Configured Prefixes ({templates.length})
+            Configured Prefix Rules ({templates.length})
           </h3>
 
           {loading ? (
@@ -225,10 +236,12 @@ export default function ChecklistBuilderPage() {
                       <span className="text-[10px] font-mono font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20 uppercase">
                         {tmpl.equipment_prefix}
                       </span>
-                      <span className="text-xs font-bold text-slate-200">Prefix Template</span>
+                      <span className="text-xs font-bold text-slate-200 truncate max-w-[140px]">
+                        {tmpl.title}
+                      </span>
                     </div>
                     <span className="text-[10px] text-slate-500 font-mono">
-                      {tmpl.schema?.length || 0} Questions
+                      {tmpl.schema?.length || 0} Qs
                     </span>
                   </div>
                 );
@@ -242,7 +255,7 @@ export default function ChecklistBuilderPage() {
           <div className="flex items-center justify-between border-b border-white/10 pb-4">
             <h3 className="text-sm font-black text-white flex items-center gap-2">
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              {selectedTemplateId ? 'Edit Checklist Template' : 'New Checklist Template'}
+              {selectedTemplateId ? 'Edit Checklist Template' : 'New Prefix Template Rule'}
             </h3>
             <button
               onClick={handleSaveTemplate}
@@ -255,21 +268,36 @@ export default function ChecklistBuilderPage() {
           </div>
 
           {/* Metadata Controls */}
-          <div className="bg-slate-950/40 p-4 rounded-2xl border border-white/5">
-            <label className="text-xs font-bold text-slate-300 block mb-1 flex items-center gap-1">
-              <Tag className="w-3 h-3 text-blue-400" />
-              Target Equipment Prefix Code *
-            </label>
-            <input
-              type="text"
-              value={equipmentPrefix}
-              onChange={(e) => setEquipmentPrefix(e.target.value.toUpperCase())}
-              placeholder="e.g. AHU, PUMP, SOLAR, BOILER"
-              className="w-full p-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs font-mono font-bold text-blue-400 outline-none focus:ring-2 focus:ring-blue-500 uppercase"
-            />
-            <span className="text-[10px] text-slate-500 mt-1 block">
-              Matches any equipment code starting with this prefix (e.g. <span className="text-slate-300">{equipmentPrefix || 'AHU'}-01</span>).
-            </span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-950/40 p-4 rounded-2xl border border-white/5">
+            <div>
+              <label className="text-xs font-bold text-slate-300 block mb-1 flex items-center gap-1">
+                <Tag className="w-3 h-3 text-blue-400" />
+                Target Prefix Code *
+              </label>
+              <input
+                type="text"
+                value={equipmentPrefix}
+                onChange={(e) => setEquipmentPrefix(e.target.value.toUpperCase())}
+                placeholder="e.g. AHU, PUMP, SOLAR, ELEV"
+                className="w-full p-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs font-mono font-bold text-blue-400 outline-none focus:ring-2 focus:ring-blue-500 uppercase"
+              />
+              <span className="text-[10px] text-slate-500 mt-1 block">
+                Rule applies to equipment starting with this prefix (e.g. <span className="text-slate-300">{equipmentPrefix || 'AHU'}-01</span>).
+              </span>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-300 block mb-1">
+                Checklist Title
+              </label>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder={`e.g. Inspection Checklist for ${equipmentPrefix || 'Equipment'}`}
+                className="w-full p-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold text-white outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
           </div>
 
           {/* Question List Builder */}
@@ -349,13 +377,13 @@ export default function ChecklistBuilderPage() {
                         </label>
                         <input
                           type="text"
-                          value={q.options ? q.options.join(', ') : ''}
+                          value={Array.isArray(q.options) ? q.options.join(', ') : ''}
                           onChange={(e) =>
                             handleUpdateQuestion(idx, {
                               options: e.target.value.split(',').map((s) => s.trim()),
                             })
                           }
-                          placeholder="e.g. Normal, Worn, Critical, Replaced"
+                          placeholder="Normal, Needs Service, Replaced"
                           className="w-full p-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </div>
