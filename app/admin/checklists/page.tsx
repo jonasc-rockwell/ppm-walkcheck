@@ -1,9 +1,12 @@
 // app/admin/checklists/page.tsx
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
-import { Plus, Trash2, Save, CheckSquare, Hash, ToggleLeft, Type, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { 
+  Plus, Trash2, Save, RefreshCw, ShieldCheck, 
+  Layers, Tag, Check, AlertCircle 
+} from 'lucide-react';
 
 interface QuestionField {
   id: string;
@@ -13,12 +16,23 @@ interface QuestionField {
   required: boolean;
 }
 
+interface TemplateItem {
+  id: number;
+  title?: string;
+  equipment_prefix: string;
+  schema: QuestionField[];
+}
+
 export default function ChecklistBuilderPage() {
-  const [categories, setCategories] = useState<{ id: number; name: string }[]>([]);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
-  const [fields, setFields] = useState<QuestionField[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [saving, setSaving] = useState<boolean>(false);
+  const [templates, setTemplates] = useState<TemplateItem[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
+  
+  // Editor Form State
+  const [equipmentPrefix, setEquipmentPrefix] = useState('');
+  const [questions, setQuestions] = useState<QuestionField[]>([]);
+  
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const supabase = createBrowserClient(
@@ -26,259 +40,332 @@ export default function ChecklistBuilderPage() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  // 1. Fetch categories on mount
   useEffect(() => {
-    async function loadCategories() {
-      setLoading(true);
-      const { data } = await supabase
-        .from('equipment_categories')
-        .select('id, name')
-        .order('id', { ascending: true });
-
-      if (data && data.length > 0) {
-        setCategories(data);
-        setSelectedCategoryId(Number(data[0].id));
-      } else {
-        const defaults = [
-          { id: 1, name: 'HVAC' },
-          { id: 2, name: 'Plumbing' },
-          { id: 3, name: 'Electrical' },
-          { id: 4, name: 'FDAS' },
-        ];
-        setCategories(defaults);
-        setSelectedCategoryId(1);
-      }
-    }
-    loadCategories();
+    loadTemplates();
   }, []);
 
-  // 2. Fetch template whenever selectedCategoryId changes
-  const fetchExistingTemplate = useCallback(async (catId: number) => {
+  const loadTemplates = async () => {
     setLoading(true);
-    setMessage(null);
-
     const { data, error } = await supabase
       .from('checklist_templates')
-      .select('schema')
-      .eq('equipment_category_id', Number(catId))
-      .maybeSingle();
+      .select('*')
+      .order('id', { ascending: true });
 
     if (error) {
-      console.error('Error loading template:', error);
-      setFields([]);
-    } else if (data && Array.isArray(data.schema)) {
-      setFields(data.schema as QuestionField[]);
-    } else {
-      setFields([]);
+      console.error('Error fetching checklist templates:', error);
+    } else if (data) {
+      const formatted: TemplateItem[] = data.map((t) => ({
+        id: t.id,
+        equipment_prefix: t.equipment_prefix || 'GENERAL',
+        schema: Array.isArray(t.schema) ? t.schema : [],
+      }));
+      setTemplates(formatted);
+
+      if (formatted.length > 0 && !selectedTemplateId) {
+        selectTemplate(formatted[0]);
+      }
     }
     setLoading(false);
-  }, [supabase]);
+  };
 
-  useEffect(() => {
-    if (selectedCategoryId !== null) {
-      fetchExistingTemplate(selectedCategoryId);
-    }
-  }, [selectedCategoryId, fetchExistingTemplate]);
+  const selectTemplate = (tmpl: TemplateItem) => {
+    setSelectedTemplateId(tmpl.id);
+    setEquipmentPrefix(tmpl.equipment_prefix || '');
+    setQuestions(tmpl.schema || []);
+    setMessage(null);
+  };
 
-  const addField = (type: 'number' | 'boolean' | 'select' | 'text') => {
-    const newField: QuestionField = {
-      id: `field_${Date.now()}`,
-      label:
-        type === 'number'
-          ? 'Pressure Reading (PSI)'
-          : type === 'boolean'
-          ? 'Is Valve Intact?'
-          : type === 'select'
-          ? 'Operational Status'
-          : 'Inspector Remarks',
-      type,
-      options: type === 'select' ? ['Normal', 'Needs Service', 'Replaced'] : [],
+  const handleCreateNewTemplate = () => {
+    setSelectedTemplateId(null);
+    setEquipmentPrefix('NEW');
+    setQuestions([
+      {
+        id: `q_${Date.now()}`,
+        label: 'Is the equipment visually undamaged?',
+        type: 'boolean',
+        required: true,
+      },
+    ]);
+    setMessage(null);
+  };
+
+  const handleAddQuestion = () => {
+    const newQ: QuestionField = {
+      id: `q_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      label: '',
+      type: 'boolean',
       required: true,
     };
-    setFields((prev) => [...prev, newField]);
+    setQuestions((prev) => [...prev, newQ]);
   };
 
-  const updateField = (id: string, key: keyof QuestionField, value: any) => {
-    setFields((prev) => prev.map((f) => (f.id === id ? { ...f, [key]: value } : f)));
+  const handleUpdateQuestion = (index: number, updatedField: Partial<QuestionField>) => {
+    setQuestions((prev) => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], ...updatedField };
+      return copy;
+    });
   };
 
-  const removeField = (id: string) => {
-    setFields((prev) => prev.filter((f) => f.id !== id));
+  const handleRemoveQuestion = (index: number) => {
+    setQuestions((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const saveTemplate = async () => {
-    if (!selectedCategoryId) return;
+  const handleSaveTemplate = async () => {
+    if (!equipmentPrefix.trim()) {
+      setMessage({ type: 'error', text: 'Equipment prefix is required (e.g. AHU, PUMP, SOLAR).' });
+      return;
+    }
+
     setSaving(true);
     setMessage(null);
 
+    const cleanPrefix = equipmentPrefix.trim().toUpperCase();
+
+    const payload = {
+      equipment_prefix: cleanPrefix,
+      schema: questions,
+    };
+
     try {
-      const catId = Number(selectedCategoryId);
-      const catName = categories.find((c) => c.id === catId)?.name || 'Domain';
+      if (selectedTemplateId) {
+        // Update Existing Template
+        const { error } = await supabase
+          .from('checklist_templates')
+          .update(payload)
+          .eq('id', selectedTemplateId);
 
-      const payload = {
-        equipment_category_id: catId,
-        title: `Inspection Checklist for ${catName}`,
-        schema: fields,
-      };
+        if (error) throw error;
+      } else {
+        // Create New Template
+        const { data, error } = await supabase
+          .from('checklist_templates')
+          .insert([payload])
+          .select('id')
+          .single();
 
-      const { error } = await supabase
-        .from('checklist_templates')
-        .upsert(payload, { onConflict: 'equipment_category_id' });
+        if (error) throw error;
+        if (data) setSelectedTemplateId(data.id);
+      }
 
-      if (error) throw error;
-
-      setMessage({ type: 'success', text: `Checklist template for ${catName} saved to database!` });
+      setMessage({ type: 'success', text: `Checklist template for prefix "${cleanPrefix}" saved successfully!` });
+      await loadTemplates();
     } catch (err: any) {
-      console.error('Save checklist error:', err);
-      setMessage({ type: 'error', text: `Failed to save template: ${err.message || 'Unknown database error'}` });
+      setMessage({ type: 'error', text: err.message || 'Failed to save template.' });
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto text-white">
+    <div className="space-y-6 max-w-6xl mx-auto text-white">
       {/* Header */}
       <div className="bg-slate-900/60 backdrop-blur-xl p-6 sm:p-8 rounded-3xl border border-white/10 shadow-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-black tracking-tight">Checklist Builder</h1>
-          <p className="text-xs text-slate-400 font-medium max-w-lg mt-1">
-            Build Google Forms-style dynamic inspection checklists per domain category.
+          <p className="text-xs text-slate-400 font-medium max-w-xl mt-1">
+            Map checklist questions directly to equipment code prefixes (e.g., <span className="text-blue-400 font-bold">AHU</span>, <span className="text-blue-400 font-bold">PUMP</span>, <span className="text-blue-400 font-bold">SOLAR</span>).
           </p>
         </div>
         <button
-          onClick={saveTemplate}
-          disabled={saving || loading}
-          className="flex items-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-2xl shadow-lg shadow-blue-600/30 transition-all active:scale-95"
+          onClick={handleCreateNewTemplate}
+          className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-blue-600/30 transition-all active:scale-95"
         >
-          {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-          {saving ? 'Saving...' : 'Save Template'}
+          <Plus className="w-4 h-4" />
+          Create New Prefix Template
         </button>
       </div>
 
-      {/* Alert Messaging */}
       {message && (
         <div
-          className={`p-4 rounded-2xl border text-xs font-bold backdrop-blur-md flex items-center gap-2 ${
+          className={`p-4 rounded-2xl border text-xs font-bold flex items-center gap-2 ${
             message.type === 'success'
               ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
               : 'bg-rose-500/10 border-rose-500/20 text-rose-300'
           }`}
         >
           {message.type === 'success' ? (
-            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            <Check className="w-4 h-4 text-emerald-400" />
           ) : (
             <AlertCircle className="w-4 h-4 text-rose-400" />
           )}
-          <span>{message.text}</span>
+          {message.text}
         </div>
       )}
 
-      {/* Domain Category Selector */}
-      <div className="bg-slate-900/60 backdrop-blur-xl p-5 rounded-2xl border border-white/10 shadow-xl space-y-2">
-        <label className="text-xs font-bold text-slate-300 block">Select Domain Category</label>
-        <select
-          value={selectedCategoryId ?? ''}
-          onChange={(e) => setSelectedCategoryId(Number(e.target.value))}
-          className="w-full p-3 bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold text-white outline-none focus:ring-2 focus:ring-blue-500/50"
-        >
-          {categories.map((cat) => (
-            <option key={cat.id} value={cat.id}>
-              {cat.name} Domain
-            </option>
-          ))}
-        </select>
-      </div>
+      {/* Main Builder Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left Panel: List of Templates / Prefixes */}
+        <div className="bg-slate-900/80 backdrop-blur-xl p-5 rounded-3xl border border-white/10 space-y-4">
+          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+            <Layers className="w-4 h-4 text-blue-400" />
+            Configured Prefixes ({templates.length})
+          </h3>
 
-      {/* Input Type Toolbar */}
-      <div className="bg-slate-900/60 backdrop-blur-xl p-5 rounded-2xl border border-white/10 shadow-xl space-y-3">
-        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Add Field Type</span>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <button
-            onClick={() => addField('number')}
-            className="flex items-center justify-center gap-2 p-3 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-bold border border-white/5 transition-all"
-          >
-            <Hash className="w-4 h-4 text-blue-400" /> Number Input
-          </button>
-          <button
-            onClick={() => addField('boolean')}
-            className="flex items-center justify-center gap-2 p-3 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-bold border border-white/5 transition-all"
-          >
-            <ToggleLeft className="w-4 h-4 text-emerald-400" /> Yes / No Toggle
-          </button>
-          <button
-            onClick={() => addField('select')}
-            className="flex items-center justify-center gap-2 p-3 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-bold border border-white/5 transition-all"
-          >
-            <CheckSquare className="w-4 h-4 text-amber-400" /> Choice List
-          </button>
-          <button
-            onClick={() => addField('text')}
-            className="flex items-center justify-center gap-2 p-3 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-bold border border-white/5 transition-all"
-          >
-            <Type className="w-4 h-4 text-purple-400" /> Text Note
-          </button>
-        </div>
-      </div>
-
-      {/* Form Questions */}
-      <div className="space-y-4">
-        {loading ? (
-          <div className="p-12 text-center bg-slate-900/40 rounded-2xl border border-white/5 flex flex-col items-center gap-2">
-            <RefreshCw className="w-5 h-5 text-blue-400 animate-spin" />
-            <span className="text-xs font-semibold text-slate-400">Loading saved domain template...</span>
-          </div>
-        ) : fields.length === 0 ? (
-          <div className="p-12 text-center bg-slate-900/40 rounded-2xl border border-dashed border-slate-700 text-xs text-slate-500 font-medium">
-            No checklist questions added yet for this domain category. Click an input type above to start building.
-          </div>
-        ) : (
-          fields.map((field, idx) => (
-            <div key={field.id} className="p-5 bg-slate-900/80 backdrop-blur-xl rounded-2xl border border-white/10 space-y-3 shadow-xl">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-400/20 uppercase">
-                  Q{idx + 1} • {field.type}
-                </span>
-                <button
-                  onClick={() => removeField(field.id)}
-                  className="text-slate-500 hover:text-rose-400 transition-colors"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div>
-                <label className="text-[11px] font-bold text-slate-400 block mb-1">Question / Input Label</label>
-                <input
-                  type="text"
-                  value={field.label}
-                  onChange={(e) => updateField(field.id, 'label', e.target.value)}
-                  className="w-full p-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold text-white outline-none focus:ring-2 focus:ring-blue-500/50"
-                />
-              </div>
-
-              {field.type === 'select' && (
-                <div>
-                  <label className="text-[11px] font-bold text-slate-400 block mb-1">
-                    Dropdown Choices (Comma Separated)
-                  </label>
-                  <input
-                    type="text"
-                    value={field.options?.join(', ')}
-                    onChange={(e) =>
-                      updateField(
-                        field.id,
-                        'options',
-                        e.target.value.split(',').map((s) => s.trim())
-                      )
-                    }
-                    className="w-full p-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-slate-300 outline-none focus:ring-2 focus:ring-blue-500/50"
-                  />
-                </div>
-              )}
+          {loading ? (
+            <div className="p-8 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
+              <RefreshCw className="w-4 h-4 animate-spin text-blue-400" />
+              Loading templates...
             </div>
-          ))
-        )}
+          ) : (
+            <div className="space-y-2">
+              {templates.map((tmpl) => {
+                const isSelected = selectedTemplateId === tmpl.id;
+                return (
+                  <div
+                    key={tmpl.id}
+                    onClick={() => selectTemplate(tmpl)}
+                    className={`p-3.5 rounded-2xl border cursor-pointer transition-all flex items-center justify-between ${
+                      isSelected
+                        ? 'bg-blue-600/20 border-blue-500/50 ring-1 ring-blue-500/30'
+                        : 'bg-slate-800/40 border-white/5 hover:bg-slate-800/80 hover:border-white/10'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20 uppercase">
+                        {tmpl.equipment_prefix}
+                      </span>
+                      <span className="text-xs font-bold text-slate-200">Prefix Template</span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 font-mono">
+                      {tmpl.schema?.length || 0} Questions
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Right Panel: Template Question Editor */}
+        <div className="lg:col-span-2 bg-slate-900/80 backdrop-blur-xl p-6 rounded-3xl border border-white/10 space-y-6">
+          <div className="flex items-center justify-between border-b border-white/10 pb-4">
+            <h3 className="text-sm font-black text-white flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              {selectedTemplateId ? 'Edit Checklist Template' : 'New Checklist Template'}
+            </h3>
+            <button
+              onClick={handleSaveTemplate}
+              disabled={saving}
+              className="flex items-center gap-2 px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-emerald-600/20 transition-all"
+            >
+              {saving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+              {saving ? 'Saving...' : 'Save Template'}
+            </button>
+          </div>
+
+          {/* Metadata Controls */}
+          <div className="bg-slate-950/40 p-4 rounded-2xl border border-white/5">
+            <label className="text-xs font-bold text-slate-300 block mb-1 flex items-center gap-1">
+              <Tag className="w-3 h-3 text-blue-400" />
+              Target Equipment Prefix Code *
+            </label>
+            <input
+              type="text"
+              value={equipmentPrefix}
+              onChange={(e) => setEquipmentPrefix(e.target.value.toUpperCase())}
+              placeholder="e.g. AHU, PUMP, SOLAR, BOILER"
+              className="w-full p-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs font-mono font-bold text-blue-400 outline-none focus:ring-2 focus:ring-blue-500 uppercase"
+            />
+            <span className="text-[10px] text-slate-500 mt-1 block">
+              Matches any equipment code starting with this prefix (e.g. <span className="text-slate-300">{equipmentPrefix || 'AHU'}-01</span>).
+            </span>
+          </div>
+
+          {/* Question List Builder */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+                Checklist Questions ({questions.length})
+              </h4>
+              <button
+                onClick={handleAddQuestion}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-blue-400 font-bold text-xs rounded-lg border border-white/10"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add Question
+              </button>
+            </div>
+
+            {questions.length === 0 ? (
+              <div className="p-8 text-center bg-slate-950/40 border border-dashed border-slate-800 rounded-2xl text-xs text-slate-500">
+                No questions added to this prefix template yet. Click <strong className="text-blue-400">Add Question</strong> to start.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {questions.map((q, idx) => (
+                  <div
+                    key={q.id || idx}
+                    className="p-4 bg-slate-950/60 rounded-2xl border border-white/5 space-y-3"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-[10px] font-mono font-bold text-slate-400 bg-slate-800 px-2 py-0.5 rounded">
+                        Q{idx + 1}
+                      </span>
+                      <button
+                        onClick={() => handleRemoveQuestion(idx)}
+                        className="p-1.5 text-slate-500 hover:text-rose-400 rounded-lg hover:bg-rose-500/10"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="sm:col-span-2">
+                        <label className="text-[11px] font-bold text-slate-400 block mb-1">Question Label</label>
+                        <input
+                          type="text"
+                          value={q.label}
+                          onChange={(e) => handleUpdateQuestion(idx, { label: e.target.value })}
+                          placeholder="e.g. Check belt tension and alignment"
+                          className="w-full p-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-400 block mb-1">Answer Type</label>
+                        <select
+                          value={q.type}
+                          onChange={(e) =>
+                            handleUpdateQuestion(idx, {
+                              type: e.target.value as QuestionField['type'],
+                            })
+                          }
+                          className="w-full p-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white font-semibold outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="boolean">Boolean Check (Pass / Fail)</option>
+                          <option value="number">Numeric Value Input</option>
+                          <option value="text">Free Text Response</option>
+                          <option value="select">Dropdown Choice Options</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Options for Select Type */}
+                    {q.type === 'select' && (
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-400 block mb-1">
+                          Dropdown Options (comma-separated)
+                        </label>
+                        <input
+                          type="text"
+                          value={q.options ? q.options.join(', ') : ''}
+                          onChange={(e) =>
+                            handleUpdateQuestion(idx, {
+                              options: e.target.value.split(',').map((s) => s.trim()),
+                            })
+                          }
+                          placeholder="e.g. Normal, Worn, Critical, Replaced"
+                          className="w-full p-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
